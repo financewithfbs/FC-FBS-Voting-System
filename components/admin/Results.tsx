@@ -2,10 +2,9 @@
 
 import { useState, useEffect } from "react"
 
-interface TeamResult {
-  id: string
-  name: string
-  rank: number
+interface DebateTeam {
+  teamId: string
+  teamName: string
   panelistScore: number
   audienceVotes: number
   panelistWeighted: number
@@ -13,14 +12,36 @@ interface TeamResult {
   totalScore: number
 }
 
-interface Props {
-  currentRound: number
+interface DebateResult {
+  debateId: string
+  debateNumber: number
+  name: string
+  status: string
+  teams: DebateTeam[]
+  winner: {
+    teamId: string
+    teamName: string
+    score: number
+  } | null
 }
 
-export default function Results({ currentRound }: Props) {
-  const [results, setResults] = useState<TeamResult[]>([])
+interface Winners {
+  first: { teamId: string; teamName: string; score: number } | null
+  second: { teamId: string; teamName: string; score: number } | null
+  third: { teamId: string; teamName: string; score: number } | null
+}
+
+interface ResultsData {
+  debates: DebateResult[]
+  winners?: Winners
+  round: number
+}
+
+export default function Results() {
+  const [currentRound, setCurrentRound] = useState(1)
+  const [results, setResults] = useState<ResultsData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [hoveredTeam, setHoveredTeam] = useState<string | null>(null)
+  const [hoveredDebate, setHoveredDebate] = useState<string | null>(null)
   const [exportLoading, setExportLoading] = useState(false)
 
   useEffect(() => {
@@ -30,7 +51,7 @@ export default function Results({ currentRound }: Props) {
   const fetchResults = async () => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/results?round=${currentRound}`)
+      const res = await fetch(`/api/debate-results?round=${currentRound}`)
       if (!res.ok) throw new Error('Failed to fetch results')
       const data = await res.json()
       setResults(data)
@@ -44,76 +65,72 @@ export default function Results({ currentRound }: Props) {
   const getRoundTitle = () => {
     switch(currentRound) {
       case 1:
-        return { title: "Round 1 Results", subtitle: "Qualifying Round - Top 6 advance", icon: "🎯", color: "from-blue-600 to-indigo-600" }
+        return { title: "Semi-Finals Results", subtitle: "6 Debates - Winners advance to Finals", icon: "🎯", color: "from-blue-600 to-indigo-600" }
       case 2:
-        return { title: "Round 2 Results", subtitle: "FINALS - Top 3 are WINNERS! 🏆", icon: "⚡", color: "from-purple-600 to-pink-600" }
-      case 3:
-        return { title: "Final Standings", subtitle: "Champions Crowned! 🏆", icon: "🏆", color: "from-yellow-600 to-orange-600" }
+        return { title: "Finals Results", subtitle: "3 Debates - Champions Crowned! 🏆", icon: "⚡", color: "from-purple-600 to-pink-600" }
       default:
         return { title: "Results", subtitle: "", icon: "📊", color: "from-gray-600 to-gray-700" }
     }
   }
 
-  const getMedal = (rank: number) => {
-    switch(rank) {
-      case 1: return { emoji: "🥇", label: "Gold", color: "from-yellow-400 to-yellow-500" }
-      case 2: return { emoji: "🥈", label: "Silver", color: "from-gray-300 to-gray-400" }
-      case 3: return { emoji: "🥉", label: "Bronze", color: "from-orange-400 to-orange-500" }
+  const getMedal = (position: number) => {
+    switch(position) {
+      case 0: return { emoji: "🥇", label: "Gold", color: "from-yellow-400 to-yellow-500" }
+      case 1: return { emoji: "🥈", label: "Silver", color: "from-gray-300 to-gray-400" }
+      case 2: return { emoji: "🥉", label: "Bronze", color: "from-orange-400 to-orange-500" }
       default: return { emoji: "", label: "", color: "" }
     }
   }
 
   const getRoundName = () => {
     switch(currentRound) {
-      case 1: return "Round_1"
-      case 2: return "Round_2_Finals"
-      case 3: return "Final_Winners"
+      case 1: return "Semi_Finals"
+      case 2: return "Finals"
       default: return "Results"
     }
   }
 
   const exportToCSV = () => {
+    if (!results) return
+    
     setExportLoading(true)
     try {
-      // Define CSV headers
       const headers = [
-        'Rank',
-        'Team Name',
-        'Team ID',
-        'Panelist Score (Raw)',
-        'Panelist Score (Weighted - 70%)',
-        'Audience Votes',
-        'Audience Score (Weighted - 30%)',
-        'Total Score'
+        'Round',
+        'Debate Number',
+        'Debate Name',
+        'Team 1',
+        'Team 1 Score',
+        'Team 2',
+        'Team 2 Score',
+        'Winner',
+        'Winner Score'
       ]
 
-      // Convert results to CSV rows
-      const rows = results.map(team => [
-        team.rank,
-        team.name,
-        team.id,
-        team.panelistScore,
-        team.panelistWeighted,
-        team.audienceVotes,
-        team.audienceWeighted,
-        team.totalScore
+      const rows = results.debates.map(debate => [
+        currentRound === 1 ? 'Semi-Finals' : 'Finals', // Use currentRound instead of debate.round
+        debate.debateNumber,
+        debate.name || `Debate ${debate.debateNumber}`,
+        debate.teams[0]?.teamName || '',
+        debate.teams[0]?.totalScore || 0,
+        debate.teams[1]?.teamName || '',
+        debate.teams[1]?.totalScore || 0,
+        debate.winner?.teamName || '',
+        debate.winner?.score || 0
       ])
 
-      // Combine headers and rows
       const csvContent = [
         headers.join(','),
-        ...rows.map(row => row.join(','))
+        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
       ].join('\n')
 
-      // Create download link
       const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
       const link = document.createElement('a')
       const url = URL.createObjectURL(blob)
       
-      // Set filename with current date and round
       const date = new Date().toISOString().split('T')[0]
       link.setAttribute('href', url)
-      link.setAttribute('download', `voting_results_${getRoundName()}_${date}.csv`)
+      link.setAttribute('download', `debate_results_${getRoundName()}_${date}.csv`)
       link.style.visibility = 'hidden'
       
       document.body.appendChild(link)
@@ -160,295 +177,144 @@ export default function Results({ currentRound }: Props) {
           </div>
         </div>
         
-        {/* Stats Overview */}
-        <div className="mt-6 grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="bg-white/20 backdrop-blur-sm rounded-xl p-3 border border-white/30">
-            <p className="text-white/80 text-xs">Total Teams</p>
-            <p className="text-white font-bold text-xl">{results.length}</p>
-          </div>
-          <div className="bg-white/20 backdrop-blur-sm rounded-xl p-3 border border-white/30">
-            <p className="text-white/80 text-xs">Top Score</p>
-            <p className="text-white font-bold text-xl">{results[0]?.totalScore || 0}</p>
-          </div>
-          <div className="bg-white/20 backdrop-blur-sm rounded-xl p-3 border border-white/30">
-            <p className="text-white/80 text-xs">Total Votes</p>
-            <p className="text-white font-bold text-xl">
-              {results.reduce((acc, team) => acc + team.audienceVotes, 0)}
-            </p>
-          </div>
-          <div className="bg-white/20 backdrop-blur-sm rounded-xl p-3 border border-white/30">
-            <p className="text-white/80 text-xs">Avg Score</p>
-            <p className="text-white font-bold text-xl">
-              {results.length > 0 ? (results.reduce((acc, team) => acc + team.totalScore, 0) / results.length).toFixed(1) : '0'}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Results Table - Enhanced */}
-      <div className="p-6 md:p-8">
-        <div className="overflow-x-auto rounded-xl border border-gray-200">
-          <table className="min-w-full bg-white">
-            <thead>
-              <tr className="bg-gradient-to-r from-gray-50 to-purple-50">
-                <th className="py-4 px-6 text-left text-sm font-semibold text-gray-600">Rank</th>
-                <th className="py-4 px-6 text-left text-sm font-semibold text-gray-600">Team</th>
-                <th className="py-4 px-6 text-center text-sm font-semibold text-gray-600" colSpan={2}>
-                  Panelist (70%)
-                </th>
-                <th className="py-4 px-6 text-center text-sm font-semibold text-gray-600" colSpan={2}>
-                  Audience (30%)
-                </th>
-                <th className="py-4 px-6 text-center text-sm font-semibold text-gray-600">Total</th>
-              </tr>
-              <tr className="bg-gray-50/50">
-                <th className="px-6 py-2"></th>
-                <th className="px-6 py-2"></th>
-                <th className="px-6 py-2 text-center text-xs text-gray-500 font-medium">Raw</th>
-                <th className="px-6 py-2 text-center text-xs text-gray-500 font-medium">Weighted</th>
-                <th className="px-6 py-2 text-center text-xs text-gray-500 font-medium">Count</th>
-                <th className="px-6 py-2 text-center text-xs text-gray-500 font-medium">Weighted</th>
-                <th className="px-6 py-2"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {results.map((team, index) => {
-                const medal = getMedal(team.rank)
-                return (
-                  <tr 
-                    key={team.id} 
-                    className={`
-                      transition-all duration-300 cursor-pointer
-                      ${hoveredTeam === team.id ? 'bg-gradient-to-r from-purple-50 to-indigo-50 scale-[1.02] shadow-lg' : ''}
-                      ${team.rank === 1 ? 'bg-gradient-to-r from-yellow-50/50 to-amber-50/50' : ''}
-                      ${team.rank === 2 ? 'bg-gradient-to-r from-gray-50/50 to-slate-50/50' : ''}
-                      ${team.rank === 3 ? 'bg-gradient-to-r from-orange-50/50 to-amber-50/50' : ''}
-                    `}
-                    onMouseEnter={() => setHoveredTeam(team.id)}
-                    onMouseLeave={() => setHoveredTeam(null)}
-                  >
-                    <td className="py-4 px-6">
-                      <div className="flex items-center gap-2">
-                        <span className={`
-                          w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm
-                          ${team.rank === 1 ? 'bg-gradient-to-r from-yellow-400 to-yellow-500 text-white' : ''}
-                          ${team.rank === 2 ? 'bg-gradient-to-r from-gray-400 to-gray-500 text-white' : ''}
-                          ${team.rank === 3 ? 'bg-gradient-to-r from-orange-400 to-orange-500 text-white' : ''}
-                          ${team.rank > 3 ? 'bg-gray-200 text-gray-700' : ''}
-                        `}>
-                          {team.rank}
-                        </span>
-                        {medal.emoji && (
-                          <span className="text-2xl animate-bounce-slow">{medal.emoji}</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-4 px-6">
-                      <div className="flex flex-col">
-                        <span className="font-semibold text-gray-800">{team.name}</span>
-                        <span className="text-xs text-gray-500">ID: {team.id.slice(0, 8)}</span>
-                      </div>
-                    </td>
-                    <td className="py-4 px-6 text-center">
-                      <span className="font-mono text-gray-600">{team.panelistScore}</span>
-                    </td>
-                    <td className="py-4 px-6 text-center">
-                      <span className="font-bold text-purple-600">{team.panelistWeighted}</span>
-                    </td>
-                    <td className="py-4 px-6 text-center">
-                      <span className="font-mono text-gray-600">{team.audienceVotes}</span>
-                    </td>
-                    <td className="py-4 px-6 text-center">
-                      <span className="font-bold text-indigo-600">{team.audienceWeighted}</span>
-                    </td>
-                    <td className="py-4 px-6 text-center">
-                      <span className={`
-                        font-bold text-lg px-3 py-1 rounded-full
-                        ${team.rank === 1 ? 'bg-gradient-to-r from-yellow-100 to-amber-100 text-yellow-800' : ''}
-                        ${team.rank === 2 ? 'bg-gradient-to-r from-gray-100 to-slate-100 text-gray-800' : ''}
-                        ${team.rank === 3 ? 'bg-gradient-to-r from-orange-100 to-amber-100 text-orange-800' : ''}
-                        ${team.rank > 3 ? 'bg-gray-100 text-gray-700' : ''}
-                      `}>
-                        {team.totalScore}
-                      </span>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-
-        {/* Round-Specific Sections */}
-        <div className="mt-8 space-y-6">
-          {/* Round 1 - Qualifiers */}
-          {currentRound === 1 && results.length > 0 && (
-            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="bg-blue-500 rounded-lg p-2">
-                  <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                  </svg>
-                </div>
-                <h3 className="text-xl font-bold text-blue-800">🏆 Teams Qualifying for Round 2</h3>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {results.slice(0, 6).map((team, index) => (
-                  <div key={team.id} className="bg-white rounded-lg p-3 shadow-md flex items-center gap-3 transform hover:scale-105 transition-all duration-300">
-                    <span className="bg-blue-500 text-white rounded-full w-8 h-8 flex items-center justify-center font-bold">
-                      {index + 1}
-                    </span>
-                    <div className="flex-1">
-                      <p className="font-semibold text-gray-800">{team.name}</p>
-                      <p className="text-xs text-gray-500">Score: {team.totalScore}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Round 2 - Winners */}
-          {currentRound === 2 && results.length > 0 && (
-            <div className="space-y-6">
-              {/* Podium */}
-              <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-6 border border-green-200">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="bg-green-500 rounded-lg p-2">
-                    <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-                    </svg>
-                  </div>
-                  <h3 className="text-2xl font-bold text-green-800">🏆 WINNERS PODIUM 🏆</h3>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-                  {/* 2nd Place */}
-                  {results[1] && (
-                    <div className="order-1 md:order-1 transform hover:scale-105 transition-all duration-300">
-                      <div className="bg-gradient-to-b from-gray-100 to-gray-200 rounded-t-2xl p-6 text-center border-2 border-gray-300 shadow-lg">
-                        <div className="text-5xl mb-3 animate-bounce-slow">🥈</div>
-                        <h4 className="font-bold text-gray-800 text-lg mb-1">{results[1].name}</h4>
-                        <p className="text-2xl font-bold text-gray-700">{results[1].totalScore}</p>
-                        <p className="text-xs text-gray-500 mt-2">2nd Place</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 1st Place */}
-                  {results[0] && (
-                    <div className="order-2 md:order-2 md:-mt-8 transform hover:scale-105 transition-all duration-300">
-                      <div className="bg-gradient-to-b from-yellow-100 to-yellow-200 rounded-t-2xl p-8 text-center border-2 border-yellow-400 shadow-xl">
-                        <div className="text-6xl mb-3 animate-bounce">🥇</div>
-                        <h4 className="font-bold text-yellow-800 text-xl mb-1">{results[0].name}</h4>
-                        <p className="text-3xl font-bold text-yellow-700">{results[0].totalScore}</p>
-                        <p className="text-sm text-yellow-600 mt-2 font-semibold">CHAMPION</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 3rd Place */}
-                  {results[2] && (
-                    <div className="order-3 md:order-3 transform hover:scale-105 transition-all duration-300">
-                      <div className="bg-gradient-to-b from-orange-100 to-orange-200 rounded-t-2xl p-6 text-center border-2 border-orange-300 shadow-lg">
-                        <div className="text-5xl mb-3 animate-bounce-slow">🥉</div>
-                        <h4 className="font-bold text-orange-800 text-lg mb-1">{results[2].name}</h4>
-                        <p className="text-2xl font-bold text-orange-700">{results[2].totalScore}</p>
-                        <p className="text-xs text-gray-500 mt-2">3rd Place</p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* All Teams Ranking */}
-              <div className="bg-gradient-to-r from-gray-50 to-slate-50 rounded-xl p-6 border border-gray-200">
-                <h4 className="font-semibold text-gray-700 mb-4 flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 bg-gray-500 rounded-full"></span>
-                  Complete Rankings
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {results.map((team) => (
-                    <div key={team.id} className="flex items-center justify-between bg-white p-2 rounded-lg shadow-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-gray-500 w-6">#{team.rank}</span>
-                        <span className="font-medium text-gray-800">{team.name}</span>
-                      </div>
-                      <span className="text-sm font-semibold text-purple-600">{team.totalScore}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Round 3 - Final Winners */}
-          {currentRound === 3 && results.length > 0 && (
-            <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl p-8 border border-purple-200">
-              <div className="text-center mb-8">
-                <div className="text-7xl mb-4 animate-bounce">🏆</div>
-                <h3 className="text-3xl font-bold text-purple-800 mb-2">FINAL CHAMPIONS</h3>
-                <p className="text-purple-600">Based on Round 2 Results</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {results.slice(0, 3).map((team, index) => {
-                  const medal = getMedal(team.rank)
-                  return (
-                    <div 
-                      key={team.id} 
-                      className={`
-                        rounded-2xl p-6 text-center transform hover:scale-105 transition-all duration-300
-                        ${index === 0 ? 'bg-gradient-to-b from-yellow-50 to-yellow-100 border-2 border-yellow-400 shadow-xl' : ''}
-                        ${index === 1 ? 'bg-gradient-to-b from-gray-50 to-gray-100 border-2 border-gray-400 shadow-lg' : ''}
-                        ${index === 2 ? 'bg-gradient-to-b from-orange-50 to-orange-100 border-2 border-orange-400 shadow-lg' : ''}
-                      `}
-                    >
-                      <div className="text-6xl mb-4 animate-pulse">{medal.emoji}</div>
-                      <h4 className="text-2xl font-bold text-gray-800 mb-2">{team.name}</h4>
-                      <p className="text-3xl font-bold text-purple-600 mb-3">{team.totalScore}</p>
-                      <div className="space-y-2 text-sm">
-                        <p className="text-gray-600">Panelist: {team.panelistWeighted}</p>
-                        <p className="text-gray-600">Audience: {team.audienceWeighted}</p>
-                      </div>
-                      <div className="mt-4 pt-4 border-t border-white/50">
-                        <span className="text-xs font-medium px-3 py-1 bg-white/50 rounded-full">
-                          {medal.label} Medal
-                        </span>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Single Export CSV Button */}
-        <div className="mt-6 flex justify-end">
+        {/* Round Selector */}
+        <div className="mt-6 flex gap-3">
           <button
-            onClick={exportToCSV}
-            disabled={exportLoading || results.length === 0}
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl hover:shadow-lg transform hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={() => setCurrentRound(1)}
+            className={`px-4 py-2 rounded-lg font-medium transition-all ${
+              currentRound === 1 
+                ? 'bg-white text-blue-600 shadow-lg' 
+                : 'bg-white/20 text-white hover:bg-white/30'
+            }`}
           >
-            {exportLoading ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                <span>Exporting...</span>
-              </>
-            ) : (
-              <>
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                </svg>
-                <span>Export as CSV</span>
-              </>
-            )}
+            Semi-Finals
+          </button>
+          <button
+            onClick={() => setCurrentRound(2)}
+            className={`px-4 py-2 rounded-lg font-medium transition-all ${
+              currentRound === 2 
+                ? 'bg-white text-purple-600 shadow-lg' 
+                : 'bg-white/20 text-white hover:bg-white/30'
+            }`}
+          >
+            Finals
           </button>
         </div>
       </div>
 
-      {/* Add global styles for animations */}
+      {/* Content */}
+      <div className="p-6 md:p-8">
+        {results && (
+          <>
+            {/* Round 2 Winners Display */}
+            {currentRound === 2 && results.winners && (
+              <div className="mb-8">
+                <div className="bg-gradient-to-r from-yellow-50 to-orange-50 rounded-xl p-6 border border-yellow-200">
+                  <h3 className="text-2xl font-bold text-center mb-6">🏆 CHAMPIONS 🏆</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {[results.winners.first, results.winners.second, results.winners.third].map((winner, index) => {
+                      if (!winner) return null;
+                      const medal = getMedal(index);
+                      return (
+                        <div key={winner.teamId} className="bg-white rounded-xl p-6 text-center shadow-lg">
+                          <div className={`text-5xl mb-3 inline-block p-3 rounded-full bg-gradient-to-r ${medal.color}`}>
+                            {medal.emoji}
+                          </div>
+                          <h4 className="font-bold text-xl text-gray-800 mb-2">{winner.teamName}</h4>
+                          <p className="text-2xl font-bold text-purple-600 mb-2">{winner.score}</p>
+                          <p className="text-sm text-gray-500">{medal.label} Medal</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Debates Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {results.debates.map((debate) => (
+                <div
+                  key={debate.debateId}
+                  className={`
+                    bg-white rounded-xl shadow-lg overflow-hidden border-2 transition-all duration-300
+                    ${hoveredDebate === debate.debateId ? 'border-purple-400 shadow-xl' : 'border-gray-100'}
+                  `}
+                  onMouseEnter={() => setHoveredDebate(debate.debateId)}
+                  onMouseLeave={() => setHoveredDebate(null)}
+                >
+                  {/* Debate Header */}
+                  <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-4">
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-lg font-bold text-white">
+                        {debate.name || `Debate ${debate.debateNumber}`}
+                      </h3>
+                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        debate.status === 'COMPLETED' ? 'bg-green-200 text-green-800' :
+                        debate.status === 'ACTIVE' ? 'bg-yellow-200 text-yellow-800' :
+                        'bg-gray-200 text-gray-800'
+                      }`}>
+                        {debate.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Teams */}
+                  <div className="p-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      {debate.teams.map((team, idx) => (
+                        <div key={team.teamId} className="text-center">
+                          <p className={`font-semibold mb-2 ${idx === 0 ? 'text-blue-600' : 'text-purple-600'}`}>
+                            {team.teamName}
+                          </p>
+                          <div className="space-y-1 text-sm">
+                            <p>Panelist: <span className="font-bold">{team.panelistWeighted}</span></p>
+                            <p>Audience: <span className="font-bold">{team.audienceWeighted}</span></p>
+                            <p className="text-lg font-bold text-purple-600">{team.totalScore}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Winner */}
+                    {debate.winner && (
+                      <div className="mt-4 pt-4 border-t border-gray-200 text-center">
+                        <span className="inline-flex items-center gap-2 px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm">
+                          🏆 Winner: {debate.winner.teamName} ({debate.winner.score})
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Export Button */}
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={exportToCSV}
+                disabled={exportLoading || !results}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl hover:shadow-lg transform hover:scale-105 transition-all duration-200 disabled:opacity-50"
+              >
+                {exportLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <span>Exporting...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    <span>Export Results</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
       <style jsx>{`
         @keyframes bounce-slow {
           0%, 100% { transform: translateY(0); }

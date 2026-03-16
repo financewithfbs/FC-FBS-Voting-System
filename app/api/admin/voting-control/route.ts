@@ -3,12 +3,11 @@ import { prisma } from "@/lib/prisma"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 
-// GET current voting status for all rounds - accessible to all authenticated users
+// GET current voting status for all debates
 export async function GET() {
   try {
     const session = await getServerSession(authOptions)
     
-    // Allow any authenticated user to view voting status
     if (!session) {
       return NextResponse.json(
         { error: "Unauthorized - Please sign in" },
@@ -16,70 +15,67 @@ export async function GET() {
       )
     }
 
-    let votingControls = []
-    
-    // Try to get voting controls, handle case when table doesn't exist
-    try {
-      votingControls = await prisma.votingControl.findMany({
-        orderBy: { round: "asc" }
-      })
-    } catch (dbError) {
-      console.error("Database error (table might not exist):", dbError)
-      // Return default values if table doesn't exist
-      const defaultControls = [
-        { round: 1, isActive: false },
-        { round: 2, isActive: false },
-        { round: 3, isActive: false }
+    // Get all debates with their voting control
+    const debates = await prisma.debate.findMany({
+      include: {
+        votingControl: true,
+        teams: {
+          include: {
+            team: true
+          }
+        }
+      },
+      orderBy: [
+        { round: 'asc' },
+        { debateNumber: 'asc' }
       ]
-      
-      if (session.user?.role !== "ADMIN") {
-        return NextResponse.json(defaultControls)
-      }
-      // Add null timestamps for admin
-      return NextResponse.json(defaultControls.map(c => ({ ...c, startTime: null, endTime: null })))
-    }
+    })
 
-    // Create default controls for rounds that don't exist
-    const rounds = [1, 2, 3]
-    const completeControls = rounds.map(round => {
-      const existing = votingControls.find(vc => vc.round === round)
-      return existing || {
-        round,
+    // Format response
+    const formattedDebates = debates.map(debate => ({
+      id: debate.id,
+      round: debate.round,
+      debateNumber: debate.debateNumber,
+      name: debate.name,
+      status: debate.status,
+      teams: debate.teams.map(dt => ({
+        id: dt.team.id,
+        name: dt.team.name
+      })),
+      votingControl: debate.votingControl ? {
+        isActive: debate.votingControl.isActive,
+        startTime: debate.votingControl.startTime,
+        endTime: debate.votingControl.endTime
+      } : {
         isActive: false,
         startTime: null,
         endTime: null
       }
-    })
+    }))
 
-    // For non-admin users, return only necessary fields
+    // For non-admin users, return only active status
     if (session.user?.role !== "ADMIN") {
-      const publicControls = completeControls.map(control => ({
-        round: control.round,
-        isActive: control.isActive
+      const publicData = formattedDebates.map(d => ({
+        debateId: d.id,
+        round: d.round,
+        debateNumber: d.debateNumber,
+        isActive: d.votingControl.isActive,
+        teams: d.teams
       }))
-      return NextResponse.json(publicControls)
+      return NextResponse.json(publicData)
     }
 
-    // For admin users, return all data
-    return NextResponse.json(completeControls)
+    return NextResponse.json(formattedDebates)
   } catch (error) {
     console.error("Error fetching voting controls:", error)
-    // Return default values on error
-    const defaultControls = [
-      { round: 1, isActive: false },
-      { round: 2, isActive: false },
-      { round: 3, isActive: false }
-    ]
-    
-    const session = await getServerSession(authOptions)
-    if (session?.user?.role !== "ADMIN") {
-      return NextResponse.json(defaultControls)
-    }
-    return NextResponse.json(defaultControls.map(c => ({ ...c, startTime: null, endTime: null })))
+    return NextResponse.json(
+      { error: "Error fetching voting controls" },
+      { status: 500 }
+    )
   }
 }
 
-// POST update voting status for a round - admin only
+// POST update voting status for a debate (admin only)
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions)
@@ -91,40 +87,40 @@ export async function POST(req: Request) {
       )
     }
 
-    const { round, isActive } = await req.json()
+    const { debateId, isActive } = await req.json()
 
-    if (!round || round < 1 || round > 3) {
+    if (!debateId) {
       return NextResponse.json(
-        { error: "Invalid round number" },
+        { error: "Debate ID is required" },
         { status: 400 }
       )
     }
 
-    try {
-      // Update or create voting control
-      const votingControl = await prisma.votingControl.upsert({
-        where: { round },
-        update: {
-          isActive,
-          startTime: isActive ? new Date() : null,
-          endTime: !isActive ? new Date() : null
-        },
-        create: {
-          round,
-          isActive,
-          startTime: isActive ? new Date() : null,
-          endTime: !isActive ? new Date() : null
-        }
-      })
+    // Update or create voting control
+    const votingControl = await prisma.votingControl.upsert({
+      where: { debateId },
+      update: {
+        isActive,
+        startTime: isActive ? new Date() : null,
+        endTime: !isActive ? new Date() : null
+      },
+      create: {
+        debateId,
+        isActive,
+        startTime: isActive ? new Date() : null,
+        endTime: !isActive ? new Date() : null
+      }
+    })
 
-      return NextResponse.json(votingControl)
-    } catch (dbError) {
-      console.error("Database error:", dbError)
-      return NextResponse.json(
-        { error: "Database error. Please run migrations first." },
-        { status: 500 }
-      )
-    }
+    // Update debate status
+    await prisma.debate.update({
+      where: { id: debateId },
+      data: {
+        status: isActive ? "ACTIVE" : "UPCOMING"
+      }
+    })
+
+    return NextResponse.json(votingControl)
   } catch (error) {
     console.error("Error updating voting control:", error)
     return NextResponse.json(

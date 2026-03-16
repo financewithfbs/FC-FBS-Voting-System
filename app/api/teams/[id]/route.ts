@@ -123,14 +123,21 @@ export async function DELETE(
     }
 
     console.log("Deleting related records and team...")
-    // First delete related records (votes and panelist scores)
+    // First delete related records (debate votes, debate teams, and panelist scores)
     await prisma.$transaction([
-      prisma.vote.deleteMany({
+      // Delete debate votes where this team is voted for
+      prisma.debateVote.deleteMany({
         where: { teamId: id }
       }),
+      // Delete debate team associations
+      prisma.debateTeam.deleteMany({
+        where: { teamId: id }
+      }),
+      // Delete panelist scores for this team
       prisma.panelistScore.deleteMany({
         where: { teamId: id }
       }),
+      // Finally delete the team
       prisma.team.delete({
         where: { id }
       })

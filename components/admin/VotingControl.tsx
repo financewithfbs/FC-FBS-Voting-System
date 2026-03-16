@@ -3,35 +3,44 @@
 import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
 
-interface VotingControl {
+interface Debate {
+  id: string
   round: number
-  isActive: boolean
-  startTime: string | null
-  endTime: string | null
+  debateNumber: number
+  name: string | null
+  status: string
+  teams: {
+    team: {
+      id: string
+      name: string
+    }
+  }[]
+  votingControl: {
+    isActive: boolean
+    startTime: string | null
+    endTime: string | null
+  } | null
 }
 
-interface Props {
-  currentRound: number
-  onRoundChange?: (round: number) => void
-}
-
-export default function VotingControl({ currentRound, onRoundChange }: Props) {
+export default function VotingControl() {
   const { data: session } = useSession()
-  const [votingControls, setVotingControls] = useState<VotingControl[]>([])
+  const [debates, setDebates] = useState<Debate[]>([])
   const [loading, setLoading] = useState(true)
-  const [updating, setUpdating] = useState<number | null>(null)
+  const [updating, setUpdating] = useState<string | null>(null)
   const [message, setMessage] = useState({ type: '', text: '' })
+  const [selectedRound, setSelectedRound] = useState<number>(1)
 
   useEffect(() => {
     if (session?.user?.role === "ADMIN") {
-      fetchVotingControls()
+      fetchDebates()
     }
   }, [session])
 
-  const fetchVotingControls = async () => {
+  const fetchDebates = async () => {
     setLoading(true)
     try {
-      const res = await fetch("/api/admin/voting-control")
+      // Use the debates API to get all debates with their voting control
+      const res = await fetch("/api/admin/debates")
       
       if (res.status === 401) {
         setMessage({ type: 'error', text: 'Unauthorized access. Please refresh and sign in again.' })
@@ -40,41 +49,29 @@ export default function VotingControl({ currentRound, onRoundChange }: Props) {
       
       if (!res.ok) {
         const errorData = await res.json()
-        throw new Error(errorData.error || "Failed to fetch voting controls")
+        throw new Error(errorData.error || "Failed to fetch debates")
       }
       
       const data = await res.json()
-      // Ensure we have data for all rounds
-      const completeData = [
-        data.find((d: any) => d.round === 1) || { round: 1, isActive: false, startTime: null, endTime: null },
-        data.find((d: any) => d.round === 2) || { round: 2, isActive: false, startTime: null, endTime: null },
-        data.find((d: any) => d.round === 3) || { round: 3, isActive: false, startTime: null, endTime: null }
-      ]
-      setVotingControls(completeData)
+      setDebates(data)
     } catch (error: any) {
-      console.error("Error fetching voting controls:", error)
-      setMessage({ type: 'error', text: error.message || 'Failed to load voting controls' })
-      // Set default values on error
-      setVotingControls([
-        { round: 1, isActive: false, startTime: null, endTime: null },
-        { round: 2, isActive: false, startTime: null, endTime: null },
-        { round: 3, isActive: false, startTime: null, endTime: null }
-      ])
+      console.error("Error fetching debates:", error)
+      setMessage({ type: 'error', text: error.message || 'Failed to load debates' })
     } finally {
       setLoading(false)
     }
   }
 
-  const toggleVoting = async (round: number, currentStatus: boolean) => {
-    setUpdating(round)
+  const toggleVoting = async (debateId: string, currentStatus: boolean) => {
+    setUpdating(debateId)
     setMessage({ type: '', text: '' })
 
     try {
-      const res = await fetch("/api/admin/voting-control", {
+      const res = await fetch("/api/admin/debate-control", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
-          round, 
+          debateId, 
           isActive: !currentStatus 
         })
       })
@@ -87,20 +84,28 @@ export default function VotingControl({ currentRound, onRoundChange }: Props) {
 
       setMessage({ 
         type: 'success', 
-        text: `Round ${round} voting ${!currentStatus ? 'started' : 'stopped'} successfully!` 
+        text: `Voting ${!currentStatus ? 'started' : 'stopped'} successfully!` 
       })
       
       // Update local state
-      setVotingControls(prev => 
-        prev.map(vc => 
-          vc.round === round 
+      setDebates(prev => 
+        prev.map(debate => 
+          debate.id === debateId 
             ? { 
-                ...vc, 
-                isActive: !currentStatus,
-                startTime: !currentStatus ? new Date().toISOString() : vc.startTime,
-                endTime: currentStatus ? new Date().toISOString() : vc.endTime
+                ...debate, 
+                status: !currentStatus ? "ACTIVE" : "UPCOMING",
+                votingControl: debate.votingControl ? {
+                  ...debate.votingControl,
+                  isActive: !currentStatus,
+                  startTime: !currentStatus ? new Date().toISOString() : debate.votingControl.startTime,
+                  endTime: currentStatus ? new Date().toISOString() : debate.votingControl.endTime
+                } : {
+                  isActive: !currentStatus,
+                  startTime: !currentStatus ? new Date().toISOString() : null,
+                  endTime: currentStatus ? new Date().toISOString() : null
+                }
               }
-            : vc
+            : debate
         )
       )
 
@@ -117,7 +122,6 @@ export default function VotingControl({ currentRound, onRoundChange }: Props) {
     switch(round) {
       case 1: return "🎯"
       case 2: return "⚡"
-      case 3: return "🏆"
       default: return "📊"
     }
   }
@@ -126,7 +130,6 @@ export default function VotingControl({ currentRound, onRoundChange }: Props) {
     switch(round) {
       case 1: return "from-blue-600 to-indigo-600"
       case 2: return "from-purple-600 to-pink-600"
-      case 3: return "from-yellow-600 to-orange-600"
       default: return "from-gray-600 to-gray-700"
     }
   }
@@ -152,6 +155,8 @@ export default function VotingControl({ currentRound, onRoundChange }: Props) {
     )
   }
 
+  const filteredDebates = debates.filter(d => d.round === selectedRound)
+
   return (
     <div className="bg-white rounded-2xl shadow-lg p-6">
       <div className="flex items-center gap-3 mb-6">
@@ -160,7 +165,7 @@ export default function VotingControl({ currentRound, onRoundChange }: Props) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
           </svg>
         </div>
-        <h3 className="text-lg font-bold text-gray-800">Voting Control</h3>
+        <h3 className="text-lg font-bold text-gray-800">Debate Voting Control</h3>
       </div>
 
       {message.text && (
@@ -173,98 +178,126 @@ export default function VotingControl({ currentRound, onRoundChange }: Props) {
         </div>
       )}
 
+      {/* Round Selector */}
+      <div className="flex gap-2 mb-6">
+        <button
+          onClick={() => setSelectedRound(1)}
+          className={`px-4 py-2 rounded-lg font-medium transition-all ${
+            selectedRound === 1 
+              ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white' 
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          Round 1 - Semi-Finals
+        </button>
+        <button
+          onClick={() => setSelectedRound(2)}
+          className={`px-4 py-2 rounded-lg font-medium transition-all ${
+            selectedRound === 2 
+              ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white' 
+              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+          }`}
+        >
+          Round 2 - Finals
+        </button>
+      </div>
+
       <div className="space-y-4">
-        {votingControls.map((control) => (
-          <div 
-            key={control.round}
-            className={`p-4 rounded-xl border-2 transition-all duration-300 ${
-              control.isActive 
-                ? 'border-green-400 bg-green-50/50' 
-                : 'border-gray-200 hover:border-gray-300'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-lg bg-gradient-to-r ${getRoundColor(control.round)} flex items-center justify-center text-white text-lg`}>
-                  {getRoundIcon(control.round)}
-                </div>
-                <div>
-                  <h4 className="font-semibold text-gray-800">
-                    Round {control.round}
-                    {control.round === 2 && " - Finals"}
-                    {control.round === 3 && " - Winners"}
-                  </h4>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${
-                      control.isActive 
-                        ? 'bg-green-100 text-green-700' 
-                        : 'bg-gray-100 text-gray-600'
-                    }`}>
-                      {control.isActive ? '● Active' : '○ Inactive'}
-                    </span>
-                    {control.startTime && (
-                      <span className="text-xs text-gray-500">
-                        Started: {new Date(control.startTime).toLocaleTimeString()}
-                      </span>
+        {filteredDebates.length === 0 ? (
+          <div className="text-center py-8 text-gray-500">
+            No debates found for this round.
+          </div>
+        ) : (
+          filteredDebates.map((debate) => {
+            const isActive = debate.votingControl?.isActive || false
+            const startTime = debate.votingControl?.startTime
+            const endTime = debate.votingControl?.endTime
+
+            return (
+              <div 
+                key={debate.id}
+                className={`p-4 rounded-xl border-2 transition-all duration-300 ${
+                  isActive 
+                    ? 'border-green-400 bg-green-50/50' 
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-lg bg-gradient-to-r ${getRoundColor(debate.round)} flex items-center justify-center text-white text-lg`}>
+                      {getRoundIcon(debate.round)}
+                    </div>
+                    <div>
+                      <h4 className="font-semibold text-gray-800">
+                        {debate.name || `Debate ${debate.debateNumber}`}
+                      </h4>
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          isActive 
+                            ? 'bg-green-100 text-green-700' 
+                            : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {isActive ? '● Active' : '○ Inactive'}
+                        </span>
+                        {startTime && (
+                          <span className="text-xs text-gray-500">
+                            Started: {new Date(startTime).toLocaleTimeString()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={() => toggleVoting(debate.id, isActive)}
+                    disabled={updating === debate.id}
+                    className={`relative px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      isActive
+                        ? 'bg-red-500 hover:bg-red-600 text-white'
+                        : 'bg-green-500 hover:bg-green-600 text-white'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  >
+                    {updating === debate.id ? (
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>Updating...</span>
+                      </div>
+                    ) : (
+                      isActive ? 'Stop Voting' : 'Start Voting'
                     )}
+                  </button>
+                </div>
+
+                {/* Teams in this debate */}
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <p className="text-xs text-gray-500 mb-2">Teams in this debate:</p>
+                  <div className="flex gap-4">
+                    {debate.teams.map((team, index) => (
+                      <div key={team.team.id} className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-gray-700">
+                          Team {index + 1}:
+                        </span>
+                        <span className="text-sm bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+                          {team.team.name}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              </div>
 
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => onRoundChange?.(control.round)}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200 ${
-                    currentRound === control.round
-                      ? 'bg-purple-100 text-purple-700'
-                      : 'text-gray-600 hover:bg-gray-100'
-                  }`}
-                >
-                  Select
-                </button>
-
-                <button
-                  onClick={() => toggleVoting(control.round, control.isActive)}
-                  disabled={updating === control.round}
-                  className={`relative px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                    control.isActive
-                      ? 'bg-red-500 hover:bg-red-600 text-white'
-                      : 'bg-green-500 hover:bg-green-600 text-white'
-                  } disabled:opacity-50 disabled:cursor-not-allowed`}
-                >
-                  {updating === control.round ? (
-                    <div className="flex items-center gap-2">
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      <span>Updating...</span>
-                    </div>
-                  ) : (
-                    control.isActive ? 'Stop Voting' : 'Start Voting'
-                  )}
-                </button>
-              </div>
-            </div>
-
-            <div className="mt-3 pt-3 border-t border-gray-200">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-500">
-                  {control.isActive 
-                    ? 'Voting is currently OPEN for audience'
-                    : 'Voting is currently CLOSED for audience'
-                  }
-                </span>
-                {control.endTime && (
-                  <span className="text-gray-500">
-                    Ended: {new Date(control.endTime).toLocaleTimeString()}
-                  </span>
+                {endTime && (
+                  <div className="mt-2 text-xs text-gray-500">
+                    Ended: {new Date(endTime).toLocaleTimeString()}
+                  </div>
                 )}
               </div>
-            </div>
-          </div>
-        ))}
+            )
+          })
+        )}
       </div>
 
       <div className="mt-4 p-3 bg-blue-50 rounded-lg text-xs text-blue-700">
-        <p>💡 When voting is active, audience members can cast their votes for that round. When stopped, the voting page will show that voting is closed.</p>
+        <p>💡 Control voting for each debate individually. When active, audience can vote for their preferred team in that debate.</p>
       </div>
     </div>
   )

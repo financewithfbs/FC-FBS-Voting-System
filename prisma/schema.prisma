@@ -12,12 +12,12 @@ model User {
   email         String    @unique
   password      String
   name          String?
-  pgp           String?   // New field for PGP (e.g., "PGP1", "PGP2")
-  section       String?   // New field for Section (e.g., "A", "B", "C")
+  pgp           String?   
+  section       String?   
   role          UserRole  @default(AUDIENCE)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-  votes         Vote[]
+  debateVotes   DebateVote[]
   panelistScores PanelistScore[]
 }
 
@@ -25,52 +25,94 @@ model Team {
   id            String    @id @default(cuid())
   name          String
   description   String?
-  round1Score   Float?    @default(0)
-  round2Score   Float?    @default(0)
-  round3Score   Float?    @default(0)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   panelistScores PanelistScore[]
-  votes         Vote[]
+  debateVotes   DebateVote[]
+  debates       DebateTeam[]
+}
+
+model Debate {
+  id            String    @id @default(cuid())
+  round         Int       // 1 for Semi-Finals, 2 for Finals
+  debateNumber  Int       // 1-6 for Semi-Finals, 1-3 for Finals
+  name          String?   // Optional name like "Debate 1: Team A vs Team B"
+  status        DebateStatus @default(UPCOMING)
+  startTime     DateTime?
+  endTime       DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  teams         DebateTeam[]
+  votes         DebateVote[]
+  panelistScores PanelistScore[]
+  votingControl VotingControl?
+}
+
+model DebateTeam {
+  id            String    @id @default(cuid())
+  debateId      String
+  teamId        String
+  score         Float?    @default(0) // Panelist score for this debate
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  debate        Debate    @relation(fields: [debateId], references: [id], onDelete: Cascade)
+  team          Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([debateId, teamId])
+}
+
+model DebateVote {
+  id            String    @id @default(cuid())
+  debateId      String
+  userId        String
+  teamId        String
+  createdAt     DateTime  @default(now())
+
+  debate        Debate    @relation(fields: [debateId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team          Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([debateId, userId])
 }
 
 model PanelistScore {
   id            String    @id @default(cuid())
+  debateId      String
+  panelistId    String?   // Make this optional
   teamId        String
-  panelistId    String
-  round         Int
   score         Float
   createdAt     DateTime  @default(now())
   
+  debate        Debate    @relation(fields: [debateId], references: [id], onDelete: Cascade)
+  panelist      User?     @relation(fields: [panelistId], references: [id], onDelete: SetNull)
   team          Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
-  panelist      User      @relation(fields: [panelistId], references: [id], onDelete: Cascade)
 
-  @@unique([teamId, panelistId, round])
-}
-
-model Vote {
-  id            String    @id @default(cuid())
-  userId        String
-  teamId        String
-  round         Int
-  createdAt     DateTime  @default(now())
-  
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  team          Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  // Define the correct unique constraint - only debateId and teamId
+  @@unique([debateId, teamId])
 }
 
 model VotingControl {
   id            String    @id @default(cuid())
-  round         Int       @unique
+  debateId      String    @unique
   isActive      Boolean   @default(false)
   startTime     DateTime?
   endTime       DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+
+  debate        Debate    @relation(fields: [debateId], references: [id], onDelete: Cascade)
 }
 
 enum UserRole {
   ADMIN
   PANELIST
   AUDIENCE
+}
+
+enum DebateStatus {
+  UPCOMING
+  ACTIVE
+  COMPLETED
 }

@@ -3,15 +3,16 @@
 import { useState } from "react";
 import { useSession } from "next-auth/react";
 import TeamManagement from "@/components/admin/TeamManagement";
-import VoteManagement from "@/components/admin/VoteManagement";
+import DebateManagement from "@/components/admin/DebateManagement";
+import PanelistScoreManagement from "@/components/admin/PanelistScoreManagement";
 import Results from "@/components/admin/Results";
 import VotingControl from "@/components/admin/VotingControl";
-import AudienceVotesExport from "@/components/admin/AudienceVotesExport"
+import AudienceVotesExport from "@/components/admin/AudienceVotesExport";
 
 export default function AdminPage() {
   const { data: session } = useSession();
   const [activeTab, setActiveTab] = useState("teams");
-  const [currentRound, setCurrentRound] = useState(1);
+  const [selectedDebateId, setSelectedDebateId] = useState<string | null>(null);
 
   if (!session || session.user?.role !== "ADMIN") {
     return (
@@ -32,31 +33,11 @@ export default function AdminPage() {
 
   const tabs = [
     { id: "teams", label: "Team Management", icon: "👥" },
-    { id: "votes", label: "Enter Votes", icon: "🗳️" },
+    { id: "debates", label: "Debate Management", icon: "🎤" },
+    { id: "scores", label: "Panelist Scores", icon: "📝" },
     { id: "results", label: "View Results", icon: "📊" },
     { id: "voting", label: "Voting Control", icon: "⏰" },
     { id: "audience", label: "Audience Votes", icon: "👤" },
-  ];
-
-  const rounds = [
-    {
-      value: 1,
-      label: "Round 1",
-      icon: "🎯",
-      color: "from-blue-500 to-indigo-500",
-    },
-    {
-      value: 2,
-      label: "Round 2",
-      icon: "⚡",
-      color: "from-purple-500 to-pink-500",
-    },
-    {
-      value: 3,
-      label: "Round 3 (Final)",
-      icon: "🏆",
-      color: "from-yellow-500 to-orange-500",
-    },
   ];
 
   return (
@@ -142,81 +123,6 @@ export default function AdminPage() {
           </div>
         </div>
 
-        {/* Round Selector - Only show for non-voting tabs */}
-        {activeTab !== "voting" && (
-          <div className="mb-8">
-            <div className="bg-white/70 backdrop-blur-sm rounded-2xl shadow-lg p-4 md:p-5 border border-white/50">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl p-2">
-                    <svg
-                      className="w-5 h-5 text-white"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                      />
-                    </svg>
-                  </div>
-                  <label className="font-semibold text-gray-700">
-                    Current Round:
-                  </label>
-                </div>
-
-                <div className="flex-1 grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {rounds.map((round) => (
-                    <button
-                      key={round.value}
-                      onClick={() => setCurrentRound(round.value)}
-                      className={`
-                        relative group overflow-hidden rounded-xl transition-all duration-300
-                        ${
-                          currentRound === round.value
-                            ? `bg-gradient-to-r ${round.color} text-white shadow-xl scale-105`
-                            : "bg-white text-gray-700 hover:shadow-md border border-gray-200"
-                        }
-                      `}
-                    >
-                      <div className="absolute inset-0 bg-white/20 transform -translate-x-full group-hover:translate-x-full transition-transform duration-1000"></div>
-                      <div className="relative p-3 flex items-center justify-center gap-2">
-                        <span className="text-xl">{round.icon}</span>
-                        <span className="font-medium text-sm md:text-base">
-                          {round.label}
-                        </span>
-                        {currentRound === round.value && (
-                          <span className="absolute top-1 right-1 w-2 h-2 bg-white rounded-full animate-ping"></span>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Round Info Card */}
-              <div className="mt-4 p-3 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-100">
-                <div className="flex items-start gap-3">
-                  <span className="text-2xl">📌</span>
-                  <div>
-                    <p className="text-sm font-medium text-purple-800">
-                      {currentRound === 1 &&
-                        "Round 1: All 12 teams compete. Top 6 qualify for Round 2."}
-                      {currentRound === 2 &&
-                        "Round 2: Top 6 teams compete. Top 3 are the WINNERS! 🏆"}
-                      {currentRound === 3 &&
-                        "Round 3: Final results - No voting. Winners displayed here."}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Content Area */}
         <div className="relative">
           {/* Background Decoration */}
@@ -231,22 +137,27 @@ export default function AdminPage() {
                   <TeamManagement />
                 </div>
               )}
-              {activeTab === "votes" && (
+              {activeTab === "debates" && (
                 <div className="animate-fade-in">
-                  <VoteManagement currentRound={currentRound} />
+                  <DebateManagement />
+                </div>
+              )}
+              {activeTab === "scores" && (
+                <div className="animate-fade-in">
+                  <PanelistScoreManagement 
+                    selectedDebateId={selectedDebateId}
+                    onDebateSelect={setSelectedDebateId}
+                  />
                 </div>
               )}
               {activeTab === "results" && (
                 <div className="animate-fade-in">
-                  <Results currentRound={currentRound} />
+                  <Results />
                 </div>
               )}
               {activeTab === "voting" && (
                 <div className="animate-fade-in">
-                  <VotingControl
-                    currentRound={currentRound}
-                    onRoundChange={setCurrentRound}
-                  />
+                  <VotingControl />
                 </div>
               )}
               {activeTab === "audience" && (
@@ -267,8 +178,10 @@ export default function AdminPage() {
             </p>
           </div>
           <div className="bg-white/50 backdrop-blur-sm rounded-xl p-3 border border-white/50">
-            <p className="text-xs text-gray-500">Current Round</p>
-            <p className="font-semibold text-gray-800">Round {currentRound}</p>
+            <p className="text-xs text-gray-500">Selected Debate</p>
+            <p className="font-semibold text-gray-800">
+              {selectedDebateId ? `Debate ${selectedDebateId.slice(0, 4)}...` : 'None'}
+            </p>
           </div>
           <div className="bg-white/50 backdrop-blur-sm rounded-xl p-3 border border-white/50">
             <p className="text-xs text-gray-500">Admin Status</p>

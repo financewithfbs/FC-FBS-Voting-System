@@ -48,41 +48,57 @@ export default function TeamManagement() {
   const fetchTeamStats = async (teamsData: Team[]) => {
     setFetchingStats(true);
     try {
-      // Fetch round 1 results to get vote counts
-      const resultsRes = await fetch("/api/results?round=1");
-      if (resultsRes.ok) {
-        const resultsData = await resultsRes.json();
+      // Try to fetch debate results to get vote counts
+      let voteCountMap: Record<string, number> = {};
+      let scoreCountMap: Record<string, number> = {};
 
-        // Create a map of teamId to vote count
-        const voteCountMap: Record<string, number> = {};
-        resultsData.forEach((result: any) => {
-          voteCountMap[result.id] = result.audienceVotes || 0;
-        });
+      try {
+        // Fetch results for Round 1 debates
+        const resultsRes = await fetch("/api/debate-results?round=1");
+        if (resultsRes.ok) {
+          const resultsData = await resultsRes.json();
 
-        // Fetch panelist scores count
-        const scoresRes = await fetch("/api/panelist-scores?round=1");
-        const scoresData = scoresRes.ok ? await scoresRes.json() : [];
-        
-        // Create a map of teamId to panelist score count
-        const scoreCountMap: Record<string, number> = {};
-        scoresData.forEach((score: any) => {
-          if (!scoreCountMap[score.teamId]) {
-            scoreCountMap[score.teamId] = 0;
+          // Aggregate votes from all debates
+          if (resultsData.debates) {
+            resultsData.debates.forEach((debate: any) => {
+              debate.teams.forEach((team: any) => {
+                if (!voteCountMap[team.teamId]) {
+                  voteCountMap[team.teamId] = 0;
+                }
+                voteCountMap[team.teamId] += team.audienceVotes || 0;
+              });
+            });
           }
-          scoreCountMap[score.teamId]++;
-        });
-
-        // Enhance teams with vote counts and score counts
-        const teamsWithStats = teamsData.map((team) => ({
-          ...team,
-          voteCount: voteCountMap[team.id] || 0,
-          panelistScoreCount: scoreCountMap[team.id] || 0,
-        }));
-
-        setTeams(teamsWithStats);
-      } else {
-        setTeams(teamsData);
+        }
+      } catch (error) {
+        console.log("Results API not available yet, using default values");
       }
+
+      try {
+        // Fetch panelist scores
+        const scoresRes = await fetch("/api/admin/panelist-scores");
+        if (scoresRes.ok) {
+          const scoresData = await scoresRes.json();
+          scoresData.forEach((score: any) => {
+            if (!scoreCountMap[score.teamId]) {
+              scoreCountMap[score.teamId] = 0;
+            }
+            scoreCountMap[score.teamId]++;
+          });
+        }
+      } catch (error) {
+        console.log(
+          "Panelist scores API not available yet, using default values",
+        );
+      }
+
+      const teamsWithStats = teamsData.map((team) => ({
+        ...team,
+        voteCount: voteCountMap[team.id] || 0,
+        panelistScoreCount: scoreCountMap[team.id] || 0,
+      }));
+
+      setTeams(teamsWithStats);
     } catch (error) {
       console.error("Error fetching team stats:", error);
       setTeams(teamsData);
@@ -122,14 +138,16 @@ export default function TeamManagement() {
       if (editingTeam) {
         // Check if another team with same name exists (excluding current team)
         const existingTeam = teams.find(
-          (t) => t.name.toLowerCase() === name.toLowerCase() && t.id !== editingTeam.id
+          (t) =>
+            t.name.toLowerCase() === name.toLowerCase() &&
+            t.id !== editingTeam.id,
         );
         if (existingTeam) {
           setError("A team with this name already exists");
           setLoading(false);
           return;
         }
-        
+
         url = `/api/teams/${editingTeam.id}`;
         method = "PUT";
         console.log(`Sending ${method} request to ${url}`, {
@@ -138,13 +156,15 @@ export default function TeamManagement() {
         });
       } else {
         // Check if team with same name exists
-        const existingTeam = teams.find((t) => t.name.toLowerCase() === name.toLowerCase());
+        const existingTeam = teams.find(
+          (t) => t.name.toLowerCase() === name.toLowerCase(),
+        );
         if (existingTeam) {
           setError("A team with this name already exists");
           setLoading(false);
           return;
         }
-        
+
         url = "/api/teams";
         method = "POST";
         console.log(`Sending ${method} request to ${url}`, {
@@ -645,10 +665,10 @@ export default function TeamManagement() {
                       </div>
 
                       {/* Action Buttons - FIXED: Added stopPropagation and higher z-index */}
-                      <div 
-                        className="flex items-center gap-2" 
+                      <div
+                        className="flex items-center gap-2"
                         onClick={(e) => e.stopPropagation()}
-                        style={{ position: 'relative', zIndex: 20 }}
+                        style={{ position: "relative", zIndex: 20 }}
                       >
                         <button
                           onClick={(e) => {

@@ -15,25 +15,27 @@ export async function GET(req: Request) {
     }
 
     const { searchParams } = new URL(req.url)
-    const round = parseInt(searchParams.get("round") || "1")
+    const debateId = searchParams.get("debateId")
 
-    if (round < 1 || round > 3) {
+    if (!debateId) {
       return NextResponse.json(
-        { error: "Invalid round number" },
+        { error: "Debate ID is required" },
         { status: 400 }
       )
     }
 
-    const vote = await prisma.vote.findFirst({
+    const vote = await prisma.debateVote.findUnique({
       where: {
-        userId: session.user.id,
-        round: round
+        debateId_userId: {
+          debateId,
+          userId: session.user.id
+        }
       }
     })
 
     return NextResponse.json({ 
       hasVoted: !!vote,
-      round: round 
+      debateId
     })
 
   } catch (error) {

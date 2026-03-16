@@ -16,16 +16,24 @@ export async function GET(req: Request) {
 
     const { searchParams } = new URL(req.url)
     const round = searchParams.get("round")
+    const debateId = searchParams.get("debateId")
     const pgp = searchParams.get("pgp")
     const section = searchParams.get("section")
     const search = searchParams.get("search")
 
-    // Build where clause based on filters
-    const whereClause: any = {}
+    // Build where clause for debate votes
+    const debateVoteWhereClause: any = {}
     
-    // Round filter
+    // Round filter - need to filter through debate relation
     if (round && round !== "all") {
-      whereClause.round = parseInt(round)
+      debateVoteWhereClause.debate = {
+        round: parseInt(round)
+      }
+    }
+    
+    // Debate filter
+    if (debateId && debateId !== "all") {
+      debateVoteWhereClause.debateId = debateId
     }
 
     // User filters
@@ -48,12 +56,12 @@ export async function GET(req: Request) {
 
     // Only add user filter if any user filters are applied
     if (Object.keys(userWhereClause).length > 0) {
-      whereClause.user = userWhereClause
+      debateVoteWhereClause.user = userWhereClause
     }
 
-    // Get all votes with user and team details
-    const votes = await prisma.vote.findMany({
-      where: whereClause,
+    // Get debate votes (this is the only vote type now)
+    const debateVotes = await prisma.debateVote.findMany({
+      where: debateVoteWhereClause,
       include: {
         user: {
           select: {
@@ -71,52 +79,51 @@ export async function GET(req: Request) {
             id: true,
             name: true
           }
+        },
+        debate: {
+          select: {
+            id: true,
+            round: true,
+            debateNumber: true,
+            name: true
+          }
         }
       },
-      orderBy: [
-        { round: 'asc' },
-        { createdAt: 'desc' }
-      ]
+      orderBy: { createdAt: 'desc' }
     })
 
-    // Get voting control data for timestamps
-    const votingControls = await prisma.votingControl.findMany({
-      where: {
-        round: round && round !== "all" ? parseInt(round) : undefined
-      }
-    })
+    // Get voting control data
+    const votingControls = await prisma.votingControl.findMany()
 
-    // Create a map of round to voting control
+    // Create maps
     const votingControlMap = new Map()
     votingControls.forEach(vc => {
-      votingControlMap.set(vc.round, vc)
+      votingControlMap.set(vc.debateId, vc)
     })
 
     // Get unique PGP and section values for filters
     const uniquePgps = await prisma.user.findMany({
-      where: {
-        pgp: { not: null }
-      },
-      select: {
-        pgp: true
-      },
+      where: { pgp: { not: null } },
+      select: { pgp: true },
       distinct: ['pgp']
     })
 
     const uniqueSections = await prisma.user.findMany({
-      where: {
-        section: { not: null }
-      },
-      select: {
-        section: true
-      },
+      where: { section: { not: null } },
+      select: { section: true },
       distinct: ['section']
     })
 
-    // Format the response
-    const formattedVotes = votes.map(vote => ({
+    // Format debate votes
+    const formattedVotes = debateVotes.map(vote => ({
       id: vote.id,
-      round: vote.round,
+      type: 'debate',
+      round: vote.debate.round,
+      debateInfo: {
+        id: vote.debate.id,
+        number: vote.debate.debateNumber,
+        name: vote.debate.name
+      },
       votedAt: vote.createdAt,
       voter: {
         id: vote.user.id,
@@ -131,56 +138,77 @@ export async function GET(req: Request) {
         id: vote.team.id,
         name: vote.team.name
       },
-      votingSession: votingControlMap.get(vote.round) ? {
-        startTime: votingControlMap.get(vote.round).startTime,
-        endTime: votingControlMap.get(vote.round).endTime,
-        wasActive: votingControlMap.get(vote.round).isActive
+      votingSession: votingControlMap.get(vote.debateId) ? {
+        startTime: votingControlMap.get(vote.debateId).startTime,
+        endTime: votingControlMap.get(vote.debateId).endTime,
+        wasActive: votingControlMap.get(vote.debateId).isActive
       } : null
     }))
 
     // Get summary statistics
     const summary = {
-      totalVotes: votes.length,
-      uniqueVoters: new Set(votes.map(v => v.user.id)).size,
+      totalVotes: formattedVotes.length,
+      debateVotes: formattedVotes.length,
+      uniqueVoters: new Set(formattedVotes.map(v => v.voter.id)).size,
       votesPerRound: {} as Record<number, number>,
       votersPerRound: {} as Record<number, number>,
       votesPerPgp: {} as Record<string, number>,
       votesPerSection: {} as Record<string, number>
     }
 
-    votes.forEach(vote => {
+    formattedVotes.forEach(vote => {
       // Count votes per round
       summary.votesPerRound[vote.round] = (summary.votesPerRound[vote.round] || 0) + 1
       
       // Count votes per PGP
-      if (vote.user.pgp) {
-        summary.votesPerPgp[vote.user.pgp] = (summary.votesPerPgp[vote.user.pgp] || 0) + 1
+      if (vote.voter.pgp) {
+        summary.votesPerPgp[vote.voter.pgp] = (summary.votesPerPgp[vote.voter.pgp] || 0) + 1
       }
       
       // Count votes per Section
-      if (vote.user.section) {
-        summary.votesPerSection[vote.user.section] = (summary.votesPerSection[vote.user.section] || 0) + 1
+      if (vote.voter.section) {
+        summary.votesPerSection[vote.voter.section] = (summary.votesPerSection[vote.voter.section] || 0) + 1
       }
     })
 
     // Count unique voters per round
     const votersByRound: Record<number, Set<string>> = {}
-    votes.forEach(vote => {
+    formattedVotes.forEach(vote => {
       if (!votersByRound[vote.round]) {
         votersByRound[vote.round] = new Set()
       }
-      votersByRound[vote.round].add(vote.user.id)
+      votersByRound[vote.round].add(vote.voter.id)
     })
 
     Object.entries(votersByRound).forEach(([round, voters]) => {
       summary.votersPerRound[parseInt(round)] = voters.size
     })
 
+    // Get all debates for filter options
+    const debates = await prisma.debate.findMany({
+      select: {
+        id: true,
+        round: true,
+        debateNumber: true,
+        name: true
+      },
+      orderBy: [
+        { round: 'asc' },
+        { debateNumber: 'asc' }
+      ]
+    })
+
     // Prepare filter options
     const filterOptions = {
       pgps: uniquePgps.map(p => p.pgp).filter(Boolean),
       sections: uniqueSections.map(s => s.section).filter(Boolean),
-      rounds: [1, 2, 3]
+      rounds: [1, 2],
+      debates: debates.map(d => ({
+        id: d.id,
+        round: d.round,
+        number: d.debateNumber,
+        name: d.name || `Debate ${d.debateNumber}`
+      }))
     }
 
     return NextResponse.json({
@@ -188,6 +216,7 @@ export async function GET(req: Request) {
       summary,
       filters: {
         round: round || 'all',
+        debateId: debateId || 'all',
         pgp: pgp || 'all',
         section: section || 'all',
         search: search || ''

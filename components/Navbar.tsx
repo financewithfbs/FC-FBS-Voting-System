@@ -16,7 +16,7 @@ export default function Navbar() {
   const pathname = usePathname()
 
   // Check if current page is auth page
-  const isAuthPage =  pathname === '/auth/signin' || pathname === '/auth/signup'
+  const isAuthPage = pathname === '/auth/signin' || pathname === '/auth/signup'
 
   // Handle scroll effect
   useEffect(() => {
@@ -86,6 +86,7 @@ export default function Navbar() {
 
             {/* Desktop Menu - Right Side */}
             <div className="hidden md:flex items-center space-x-8">
+              {/* Uncomment Leaderboard link if needed */}
               {/* <Link 
                 href="/leaderboard" 
                 className="text-[#313053] hover:text-[#8C5BFF] transition-all duration-300 text-base font-medium px-3 py-2 relative group"
@@ -98,7 +99,7 @@ export default function Navbar() {
                 <div className="flex items-center space-x-4">
                   {session.user?.role !== "ADMIN" && (
                     <Link 
-                      href="/vote" 
+                      href="/debates" 
                       className="relative group"
                     >
                       <div className="absolute inset-0 bg-gradient-to-r from-[#8C5BFF] to-[#6356D7] rounded-xl blur-lg group-hover:blur-xl opacity-50 group-hover:opacity-75 transition-all duration-300"></div>
@@ -225,7 +226,7 @@ export default function Navbar() {
               </div>
               <div>
                 <span className="block text-[#313053] font-bold text-lg">Leaderboard</span>
-                <span className="block text-[#6d6a7c] text-sm">View rankings and scores</span>
+                <span className="block text-[#6d6a7c] text-sm">View debate results</span>
               </div>
             </Link>
             
@@ -233,7 +234,7 @@ export default function Navbar() {
               <div className="space-y-3">
                 {session.user?.role !== "ADMIN" && (
                   <Link
-                    href="/vote"
+                    href="/debates"
                     className="block relative group"
                     onClick={() => setIsMenuOpen(false)}
                   >
@@ -242,12 +243,12 @@ export default function Navbar() {
                       <div className="flex items-center space-x-3">
                         <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur flex items-center justify-center">
                           <svg className="w-6 h-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
                           </svg>
                         </div>
                         <div>
                           <span className="block font-bold text-lg">Vote Now</span>
-                          <span className="block text-white/80 text-sm">Cast your vote for Round {session.user?.role === "AUDIENCE" ? "1/2" : ""}</span>
+                          <span className="block text-white/80 text-sm">Cast your vote in debates</span>
                         </div>
                       </div>
                     </div>
@@ -270,7 +271,7 @@ export default function Navbar() {
                         </div>
                         <div>
                           <span className="block font-bold text-lg">Admin Panel</span>
-                          <span className="block text-white/80 text-sm">Manage teams, votes & results</span>
+                          <span className="block text-white/80 text-sm">Manage debates & scores</span>
                         </div>
                       </div>
                     </div>

@@ -1,26 +1,32 @@
 import { NextResponse } from "next/server"
+import { getServerSession } from "next-auth"
+import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
 export async function GET() {
   try {
-    // Test database connection
-    await prisma.$connect()
+    const session = await getServerSession(authOptions)
     
-    // Try to count users
-    const userCount = await prisma.user.count()
-    
-    return NextResponse.json({ 
-      success: true, 
-      message: "Database connected successfully",
-      userCount 
+    if (!session) {
+      return NextResponse.json({ error: "Not logged in" }, { status: 401 })
+    }
+
+    // Check if user exists in database
+    const user = await prisma.user.findUnique({
+      where: { email: session.user.email }
+    })
+
+    return NextResponse.json({
+      session: {
+        id: session.user.id,
+        email: session.user.email,
+        role: session.user.role
+      },
+      databaseUser: user,
+      exists: !!user
     })
   } catch (error) {
-    console.error("Database connection error:", error)
-    return NextResponse.json({ 
-      success: false, 
-      error: error instanceof Error ? error.message : "Unknown error" 
-    }, { status: 500 })
-  } finally {
-    await prisma.$disconnect()
+    console.error("Error:", error)
+    return NextResponse.json({ error: "Error checking user" }, { status: 500 })
   }
 }
