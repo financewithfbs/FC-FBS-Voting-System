@@ -2,26 +2,162 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ---------------------------------------------------------------- */
+/* Theme tokens                                                     */
+/* ---------------------------------------------------------------- */
+
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+  /* Brand */
+  --primary: #6356d7;
+  --primary-light: #7e5fff;
+  --primary-dark: #4b3fb0;
+
+  /* Surfaces */
+  --bg-primary: #f1ecff;
+  --bg-secondary: #e5deff;
+  --card-bg: #ffffff;
+  --card-bg-secondary: #faf8ff;
+  --input-bg: #ffffff;
+  --footer-bg: #f5f2ff;
+
+  /* Text */
+  --text-primary: #0f0d1a;
+  --text-secondary: #313053;
+  --text-muted: #6d6a7c;
+  --text-dim: #a8a3c4;
+
+  /* Borders & effects */
+  --border-color: #d8cfff;
+  --button-primary: #6356d7;
+  --neon-glow: 0 0 24px rgba(99, 86, 215, 0.35);
+  --card-shadow: 0 10px 30px -12px rgba(49, 48, 83, 0.15);
+
+  /* Legacy RGB channels (kept for backwards compat) */
+  --foreground-rgb: 15, 13, 26;
+  --background-rgb: 241, 236, 255;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
+    --primary: #9b8fff;
+    --primary-light: #b3a6ff;
+    --primary-dark: #6356d7;
+
+    --bg-primary: #0f0d1a;
+    --bg-secondary: #131029;
+    --card-bg: #1a1533;
+    --card-bg-secondary: #1f1a3d;
+    --input-bg: #14102b;
+    --footer-bg: #0d0a1d;
+
+    --text-primary: #f5f3ff;
+    --text-secondary: #d6d0ff;
+    --text-muted: #9b96b8;
+    --text-dim: #6b6685;
+
+    --border-color: #2c2550;
+    --button-primary: #7e5fff;
+    --neon-glow: 0 0 32px rgba(126, 95, 255, 0.45);
+    --card-shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.6);
+
+    --foreground-rgb: 245, 243, 255;
+    --background-rgb: 15, 13, 26;
   }
+}
+
+/* ---------------------------------------------------------------- */
+/* Base                                                             */
+/* ---------------------------------------------------------------- */
+
+html {
+  scroll-behavior: smooth;
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
   color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  background-color: rgb(var(--background-rgb));
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100dvh;
+}
+
+/* ---------------------------------------------------------------- */
+/* Selection                                                        */
+/* ---------------------------------------------------------------- */
+
+::selection {
+  background-color: color-mix(in srgb, var(--primary) 30%, transparent);
+  color: var(--text-primary);
+}
+
+/* ---------------------------------------------------------------- */
+/* Scrollbar (subtle, works in both modes)                          */
+/* ---------------------------------------------------------------- */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--primary) 40%, transparent) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--primary) 40%, transparent);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--primary) 60%, transparent);
+  background-clip: content-box;
+}
+
+/* ---------------------------------------------------------------- */
+/* Focus ring (accessible, on-brand)                                */
+/* ---------------------------------------------------------------- */
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ---------------------------------------------------------------- */
+/* Autofill fix (Chrome's yellow/blue autofill overrides)           */
+/* ---------------------------------------------------------------- */
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: var(--text-primary);
+  -webkit-box-shadow: 0 0 0 1000px var(--input-bg) inset;
+  transition: background-color 5000s ease-in-out 0s;
+  caret-color: var(--text-primary);
+}
+
+/* ---------------------------------------------------------------- */
+/* Reduce motion                                                     */
+/* ---------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

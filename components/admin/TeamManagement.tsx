@@ -1,802 +1,741 @@
-"use client";
+"use client"
 
-import { useState, useEffect } from "react";
-import { useSession } from "next-auth/react";
+import { useState, useEffect } from "react"
+import { useSession } from "next-auth/react"
+import { motion, AnimatePresence } from "framer-motion"
 
 interface Team {
-  id: string;
-  name: string;
-  description: string | null;
+  id: string
+  name: string
+  description: string | null
 }
 
 interface TeamWithStats extends Team {
-  voteCount?: number;
-  panelistScoreCount?: number;
+  voteCount?: number
+  panelistScoreCount?: number
 }
 
 export default function TeamManagement() {
-  const { data: session, status } = useSession();
-  const [teams, setTeams] = useState<TeamWithStats[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [editingTeam, setEditingTeam] = useState<Team | null>(null);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [hoveredTeam, setHoveredTeam] = useState<string | null>(null);
-  const [fetchingStats, setFetchingStats] = useState(false);
+  const { data: session, status } = useSession()
+  const [teams, setTeams] = useState<TeamWithStats[]>([])
+  const [loading, setLoading] = useState(false)
+  const [editingTeam, setEditingTeam] = useState<Team | null>(null)
+  const [error, setError] = useState("")
+  const [success, setSuccess] = useState("")
+  const [searchTerm, setSearchTerm] = useState("")
+  const [fetchingStats, setFetchingStats] = useState(false)
 
   useEffect(() => {
     if (session?.user?.role === "ADMIN") {
-      fetchTeams();
+      fetchTeams()
     }
-  }, [session]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session])
 
   const fetchTeams = async () => {
     try {
-      const res = await fetch("/api/teams");
-      if (!res.ok) throw new Error("Failed to fetch teams");
-      const data = await res.json();
-
-      // Fetch stats for each team
-      await fetchTeamStats(data);
+      const res = await fetch("/api/teams")
+      if (!res.ok) throw new Error("Failed to fetch teams")
+      const data = await res.json()
+      await fetchTeamStats(data)
     } catch (error) {
-      console.error("Error fetching teams:", error);
-      setError("Failed to load teams");
+      console.error("Error fetching teams:", error)
+      setError("Failed to load teams")
     }
-  };
+  }
 
   const fetchTeamStats = async (teamsData: Team[]) => {
-    setFetchingStats(true);
+    setFetchingStats(true)
     try {
-      // Try to fetch debate results to get vote counts
-      let voteCountMap: Record<string, number> = {};
-      let scoreCountMap: Record<string, number> = {};
+      const voteCountMap: Record<string, number> = {}
+      const scoreCountMap: Record<string, number> = {}
 
       try {
-        // Fetch results for Round 1 debates
-        const resultsRes = await fetch("/api/debate-results?round=1");
+        const resultsRes = await fetch("/api/debate-results?round=1")
         if (resultsRes.ok) {
-          const resultsData = await resultsRes.json();
-
-          // Aggregate votes from all debates
+          const resultsData = await resultsRes.json()
           if (resultsData.debates) {
             resultsData.debates.forEach((debate: any) => {
               debate.teams.forEach((team: any) => {
-                if (!voteCountMap[team.teamId]) {
-                  voteCountMap[team.teamId] = 0;
-                }
-                voteCountMap[team.teamId] += team.audienceVotes || 0;
-              });
-            });
+                if (!voteCountMap[team.teamId]) voteCountMap[team.teamId] = 0
+                voteCountMap[team.teamId] += team.audienceVotes || 0
+              })
+            })
           }
         }
-      } catch (error) {
-        console.log("Results API not available yet, using default values");
+      } catch {
+        console.log("Results API not available yet")
       }
 
       try {
-        // Fetch panelist scores
-        const scoresRes = await fetch("/api/admin/panelist-scores");
+        const scoresRes = await fetch("/api/admin/panelist-scores")
         if (scoresRes.ok) {
-          const scoresData = await scoresRes.json();
+          const scoresData = await scoresRes.json()
           scoresData.forEach((score: any) => {
-            if (!scoreCountMap[score.teamId]) {
-              scoreCountMap[score.teamId] = 0;
-            }
-            scoreCountMap[score.teamId]++;
-          });
+            if (!scoreCountMap[score.teamId]) scoreCountMap[score.teamId] = 0
+            scoreCountMap[score.teamId]++
+          })
         }
-      } catch (error) {
-        console.log(
-          "Panelist scores API not available yet, using default values",
-        );
+      } catch {
+        console.log("Panelist scores API not available yet")
       }
 
       const teamsWithStats = teamsData.map((team) => ({
         ...team,
         voteCount: voteCountMap[team.id] || 0,
         panelistScoreCount: scoreCountMap[team.id] || 0,
-      }));
+      }))
 
-      setTeams(teamsWithStats);
+      setTeams(teamsWithStats)
     } catch (error) {
-      console.error("Error fetching team stats:", error);
-      setTeams(teamsData);
+      console.error("Error fetching team stats:", error)
+      setTeams(teamsData)
     } finally {
-      setFetchingStats(false);
+      setFetchingStats(false)
     }
-  };
+  }
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-    setSuccess("");
+    e.preventDefault()
+    setLoading(true)
+    setError("")
+    setSuccess("")
 
-    const formData = new FormData(e.currentTarget);
-    const name = formData.get("name") as string;
-    const description = formData.get("description") as string;
+    const formData = new FormData(e.currentTarget)
+    const name = formData.get("name") as string
+    const description = formData.get("description") as string
 
-    // Validate team name length
     if (name.length < 1) {
-      setError("Team name must be at least 2 characters long");
-      setLoading(false);
-      return;
+      setError("Team name must be at least 2 characters long")
+      setLoading(false)
+      return
     }
 
     if (name.length > 50) {
-      setError("Team name must be less than 50 characters");
-      setLoading(false);
-      return;
+      setError("Team name must be less than 50 characters")
+      setLoading(false)
+      return
     }
 
     try {
-      let res;
-      let url;
-      let method;
+      let url = "/api/teams"
+      let method = "POST"
 
       if (editingTeam) {
-        // Check if another team with same name exists (excluding current team)
         const existingTeam = teams.find(
           (t) =>
-            t.name.toLowerCase() === name.toLowerCase() &&
-            t.id !== editingTeam.id,
-        );
+            t.name.toLowerCase() === name.toLowerCase() && t.id !== editingTeam.id
+        )
         if (existingTeam) {
-          setError("A team with this name already exists");
-          setLoading(false);
-          return;
+          setError("A team with this name already exists")
+          setLoading(false)
+          return
         }
-
-        url = `/api/teams/${editingTeam.id}`;
-        method = "PUT";
-        console.log(`Sending ${method} request to ${url}`, {
-          name,
-          description,
-        });
+        url = `/api/teams/${editingTeam.id}`
+        method = "PUT"
       } else {
-        // Check if team with same name exists
         const existingTeam = teams.find(
-          (t) => t.name.toLowerCase() === name.toLowerCase(),
-        );
+          (t) => t.name.toLowerCase() === name.toLowerCase()
+        )
         if (existingTeam) {
-          setError("A team with this name already exists");
-          setLoading(false);
-          return;
+          setError("A team with this name already exists")
+          setLoading(false)
+          return
         }
-
-        url = "/api/teams";
-        method = "POST";
-        console.log(`Sending ${method} request to ${url}`, {
-          name,
-          description,
-        });
       }
 
-      res = await fetch(url, {
-        method: method,
-        headers: {
-          "Content-Type": "application/json",
-        },
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name, description }),
-      });
+      })
 
-      console.log("Response status:", res.status);
-      const data = await res.json();
-      console.log("Response data:", data);
+      const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(
-          data.error || `Failed to save team (Status: ${res.status})`,
-        );
+        throw new Error(data.error || `Failed to save team (Status: ${res.status})`)
       }
 
-      if (e.currentTarget) {
-        e.currentTarget.reset();
-      }
-
-      setEditingTeam(null);
-      setSuccess(
-        editingTeam
-          ? "Team updated successfully!"
-          : "Team created successfully!",
-      );
-      fetchTeams();
-
-      setTimeout(() => setSuccess(""), 3000);
+      e.currentTarget.reset()
+      setEditingTeam(null)
+      setSuccess(editingTeam ? "Team updated successfully!" : "Team created successfully!")
+      fetchTeams()
+      setTimeout(() => setSuccess(""), 3000)
     } catch (error: any) {
-      console.error("Error saving team:", error);
-      setError(error.message || "Error saving team");
+      console.error("Error saving team:", error)
+      setError(error.message || "Error saving team")
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const handleDelete = async (id: string) => {
     if (
       !confirm(
-        "Are you sure you want to delete this team? This will also delete all votes and scores associated with this team.",
+        "Are you sure you want to delete this team? This will also delete all votes and scores associated with this team."
       )
     )
-      return;
+      return
 
     try {
-      console.log(`Sending DELETE request to /api/teams/${id}`);
-      const res = await fetch(`/api/teams/${id}`, {
-        method: "DELETE",
-      });
-
-      console.log("Response status:", res.status);
-      const data = await res.json();
-      console.log("Response data:", data);
+      const res = await fetch(`/api/teams/${id}`, { method: "DELETE" })
+      const data = await res.json()
 
       if (!res.ok) {
-        throw new Error(
-          data.error || `Failed to delete team (Status: ${res.status})`,
-        );
+        throw new Error(data.error || `Failed to delete team (Status: ${res.status})`)
       }
 
-      setSuccess("Team deleted successfully!");
-      fetchTeams();
-
-      setTimeout(() => setSuccess(""), 3000);
+      setSuccess("Team deleted successfully!")
+      fetchTeams()
+      setTimeout(() => setSuccess(""), 3000)
     } catch (error: any) {
-      console.error("Error deleting team:", error);
-      setError(error.message || "Error deleting team");
+      console.error("Error deleting team:", error)
+      setError(error.message || "Error deleting team")
     }
-  };
+  }
 
   const filteredTeams = teams.filter(
     (team) =>
       team.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (team.description &&
-        team.description.toLowerCase().includes(searchTerm.toLowerCase())),
-  );
+        team.description.toLowerCase().includes(searchTerm.toLowerCase()))
+  )
 
+  // ───────── Loading ─────────
   if (status === "loading" || fetchingStats) {
     return (
-      <div className="bg-gradient-to-br from-white to-purple-50 rounded-2xl shadow-xl p-6 md:p-8">
-        <div className="flex flex-col items-center justify-center py-12 md:py-16">
-          <div className="relative">
-            <div className="w-16 h-16 border-4 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
-            <div className="absolute inset-0 bg-gradient-to-r from-purple-600/20 to-indigo-600/20 rounded-full blur-xl animate-pulse"></div>
+      <div className="relative rounded-2xl p-8 bg-gradient-to-br from-white via-violet-50/30 to-indigo-50/40 dark:from-[#0f0d1a] dark:via-[#100c20] dark:to-[#130f26] border border-violet-100/60 dark:border-white/5 shadow-[0_8px_40px_-12px_rgba(99,86,215,0.15)]">
+        <div className="flex flex-col items-center justify-center py-16">
+          <div className="relative w-12 h-12">
+            <div className="absolute inset-0 rounded-full border-[3px] border-violet-100 dark:border-white/10" />
+            <div className="absolute inset-0 rounded-full border-[3px] border-transparent border-t-violet-600 dark:border-t-violet-400 animate-spin" />
+            <div className="absolute -inset-2 rounded-full bg-violet-500/10 blur-xl animate-pulse" />
           </div>
-          <p className="mt-6 text-gray-600 font-medium">Loading teams...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (session?.user?.role !== "ADMIN") {
-    return (
-      <div className="bg-gradient-to-br from-white to-purple-50 rounded-2xl shadow-xl p-6 md:p-8">
-        <div className="text-center py-12 md:py-16">
-          <div className="text-6xl mb-4">🔒</div>
-          <h3 className="text-xl font-bold text-gray-800 mb-2">
-            Access Denied
-          </h3>
-          <p className="text-gray-600">
-            You need admin privileges to access this page.
+          <p className="mt-5 text-sm font-medium text-gray-600 dark:text-gray-400">
+            Loading teams…
           </p>
         </div>
       </div>
-    );
+    )
   }
 
-  return (
-    <div className="bg-gradient-to-br from-white to-purple-50 rounded-2xl shadow-xl p-4 sm:p-6 md:p-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 md:mb-8">
-        <div className="flex items-center gap-3 mb-4 sm:mb-0">
-          <div className="bg-gradient-to-r from-purple-600 to-indigo-600 w-1 h-8 rounded-full"></div>
-          <h2 className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-800">
-            Team Management
-          </h2>
-          <span className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs px-3 py-1 rounded-full font-semibold shadow-lg">
-            {teams.length}/12 Teams
+  // ───────── Access denied ─────────
+  if (session?.user?.role !== "ADMIN") {
+    return (
+      <div className="relative rounded-2xl p-8 bg-gradient-to-br from-white via-violet-50/30 to-indigo-50/40 dark:from-[#0f0d1a] dark:via-[#100c20] dark:to-[#130f26] border border-violet-100/60 dark:border-white/5 shadow-[0_8px_40px_-12px_rgba(99,86,215,0.15)]">
+        <div className="text-center py-16 px-6">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-100 to-indigo-100 dark:from-violet-500/15 dark:to-indigo-500/10 mb-5 border border-violet-200/70 dark:border-violet-500/20">
+            <svg className="w-6 h-6 text-violet-600 dark:text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="11" width="18" height="11" rx="2" />
+              <path d="M7 11V7a5 5 0 0110 0v4" />
+            </svg>
+          </div>
+          <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-violet-600 dark:text-violet-400 mb-1.5">
+            Restricted
           </span>
-        </div>
-
-        {/* Search Bar */}
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Search teams..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full sm:w-64 pl-10 pr-4 py-2 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
-          />
-          <svg
-            className="absolute left-3 top-2.5 w-5 h-5 text-gray-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-            />
-          </svg>
-          {searchTerm && (
-            <button
-              onClick={() => setSearchTerm("")}
-              className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M6 18L18 6M6 6l12 12"
-                />
-              </svg>
-            </button>
-          )}
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1.5">
+            Access denied
+          </h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 max-w-xs mx-auto">
+            You need admin privileges to manage teams.
+          </p>
         </div>
       </div>
+    )
+  }
 
-      {/* Messages */}
-      {error && (
-        <div className="mb-6 p-4 bg-red-50 text-red-700 rounded-xl border-l-4 border-red-500 flex items-start gap-3 animate-shake">
-          <span className="text-xl">❌</span>
-          <span className="flex-1">{error}</span>
-          <button
-            onClick={() => setError("")}
-            className="text-red-500 hover:text-red-700"
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        </div>
-      )}
+  const slotsLeft = Math.max(0, 12 - teams.length)
+  const fillPct = Math.min(100, (teams.length / 12) * 100)
 
-      {success && (
-        <div className="mb-6 p-4 bg-green-50 text-green-700 rounded-xl border-l-4 border-green-500 flex items-start gap-3 animate-slide-down">
-          <span className="text-xl">✅</span>
-          <span className="flex-1">{success}</span>
-          <button
-            onClick={() => setSuccess("")}
-            className="text-green-500 hover:text-green-700"
-          >
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
-            </svg>
-          </button>
-        </div>
-      )}
+  // Rank styles for top 3
+  const rankStyles = [
+    {
+      bg: "bg-gradient-to-br from-amber-50 to-yellow-100/60 dark:from-amber-500/15 dark:to-yellow-500/10",
+      border: "border-amber-200 dark:border-amber-500/30",
+      text: "text-amber-700 dark:text-amber-400",
+      dot: "bg-amber-500",
+      emoji: "🥇",
+    },
+    {
+      bg: "bg-gradient-to-br from-slate-50 to-slate-100/60 dark:from-slate-500/15 dark:to-slate-400/10",
+      border: "border-slate-200 dark:border-slate-500/30",
+      text: "text-slate-600 dark:text-slate-300",
+      dot: "bg-slate-400",
+      emoji: "🥈",
+    },
+    {
+      bg: "bg-gradient-to-br from-orange-50 to-amber-50/60 dark:from-orange-500/15 dark:to-amber-500/10",
+      border: "border-orange-200 dark:border-orange-500/30",
+      text: "text-orange-700 dark:text-orange-400",
+      dot: "bg-orange-500",
+      emoji: "🥉",
+    },
+  ]
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
-        {/* Add/Edit Team Form */}
-        <div className="order-2 lg:order-1">
-          <div className="bg-white rounded-2xl shadow-lg p-5 sm:p-6 border border-gray-100 hover:shadow-xl transition-all duration-300">
-            <div className="flex items-center gap-3 mb-6">
-              <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg p-2">
-                {editingTeam ? (
-                  <svg
-                    className="w-5 h-5 text-white"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                    />
+  return (
+    <div className="relative">
+      {/* Ambient decoration */}
+      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden rounded-3xl">
+        <div className="absolute -top-40 -right-40 w-96 h-96 rounded-full bg-violet-300/20 dark:bg-violet-500/10 blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-96 h-96 rounded-full bg-indigo-300/20 dark:bg-indigo-500/10 blur-3xl" />
+      </div>
+
+      {/* ───────── Main container ───────── */}
+      <div className="relative rounded-2xl bg-gradient-to-br from-white via-violet-50/20 to-indigo-50/30 dark:from-[#0f0d1a] dark:via-[#100c20] dark:to-[#130f26] border border-violet-100/60 dark:border-white/5 shadow-[0_8px_40px_-12px_rgba(99,86,215,0.15)] dark:shadow-[0_8px_40px_-12px_rgba(0,0,0,0.7)] overflow-hidden">
+        {/* ───────── Header ───────── */}
+        <div className="relative p-5 sm:p-6 border-b border-violet-100/60 dark:border-white/5">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="relative shrink-0">
+                <div className="absolute inset-0 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 blur-md opacity-40" />
+                <div className="relative w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 via-violet-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/25">
+                  <svg className="w-5.5 h-5.5 text-white" width="22" height="22" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>
-                ) : (
-                  <svg
-                    className="w-5 h-5 text-white"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 4v16m8-8H4"
-                    />
-                  </svg>
-                )}
+                </div>
               </div>
-              <h3 className="text-lg sm:text-xl font-bold text-gray-800">
-                {editingTeam ? "Edit Team" : "Add New Team"}
-              </h3>
-              {editingTeam && (
-                <span className="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded-full">
-                  Editing Mode
-                </span>
-              )}
+              <div>
+                <div className="flex items-center gap-2.5 flex-wrap mb-0.5">
+                  <h1 className="text-xl font-semibold text-gray-900 dark:text-white tracking-tight">
+                    Team Management
+                  </h1>
+                  <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-500/10 px-2 py-0.5 rounded-md border border-violet-200/70 dark:border-violet-500/20">
+                    <span className="w-1.5 h-1.5 rounded-full bg-violet-500" />
+                    <span className="tabular-nums">{teams.length}</span>
+                    <span className="text-violet-400 dark:text-violet-500/60">/</span>
+                    <span className="tabular-nums">12</span>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Create, edit, and organize teams
+                </p>
+              </div>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label className="block mb-2 text-sm font-medium text-gray-700">
-                  Team Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  name="name"
-                  defaultValue={editingTeam?.name}
-                  required
-                  maxLength={50}
-                  className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200"
-                  placeholder="Enter team name (2-50 characters)"
-                />
-              </div>
+            {/* Search */}
+            <div className="relative w-full sm:w-72">
+              <input
+                type="text"
+                placeholder="Search teams…"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="peer w-full pl-10 pr-9 py-2.5 text-sm rounded-xl bg-white dark:bg-white/[0.03] border border-violet-100 dark:border-white/10 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:border-violet-400 dark:focus:border-violet-500/50 focus:shadow-[0_0_0_4px_rgba(139,92,246,0.12)] transition-all"
+              />
+              <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500 peer-focus:text-violet-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="7" />
+                <path d="M21 21l-4.3-4.3" />
+              </svg>
+              <AnimatePresence>
+                {searchTerm && (
+                  <motion.button
+                    initial={{ opacity: 0, scale: 0.7 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.7 }}
+                    onClick={() => setSearchTerm("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-md flex items-center justify-center text-gray-400 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-500/10 dark:hover:text-violet-400 transition-all"
+                    aria-label="Clear search"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </motion.button>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
 
-              <div>
-                <label className="block mb-2 text-sm font-medium text-gray-700">
-                  Description{" "}
-                  <span className="text-gray-400 text-xs">(optional)</span>
-                </label>
-                <textarea
-                  name="description"
-                  defaultValue={editingTeam?.description || ""}
-                  rows={4}
-                  maxLength={200}
-                  className="w-full border border-gray-300 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent transition-all duration-200 resize-none"
-                  placeholder="Enter team description (max 200 characters)"
-                />
-              </div>
+          {/* Fill progress bar */}
+          <div className="mt-4 flex items-center gap-3">
+            <div className="flex-1 h-1.5 rounded-full bg-violet-100/70 dark:bg-white/5 overflow-hidden">
+              <motion.div
+                initial={{ width: 0 }}
+                animate={{ width: `${fillPct}%` }}
+                transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+                className="h-full rounded-full bg-gradient-to-r from-violet-500 via-violet-600 to-indigo-600"
+              />
+            </div>
+            <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 tabular-nums whitespace-nowrap">
+              {teams.length} of 12 filled
+            </span>
+          </div>
+        </div>
 
-              <div className="flex flex-col sm:flex-row gap-3 pt-4">
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="relative group flex-1"
-                >
-                  <div className="absolute inset-0 bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl blur-lg group-hover:blur-xl opacity-50 group-hover:opacity-75 transition-all duration-300"></div>
-                  <div className="relative w-full px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl font-semibold hover:shadow-2xl transform hover:scale-105 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed">
-                    {loading ? (
-                      <div className="flex items-center justify-center space-x-2">
-                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>Saving...</span>
-                      </div>
-                    ) : editingTeam ? (
-                      "Update Team"
+        {/* ───────── Alerts ───────── */}
+        <div className="px-5 sm:px-6 pt-4">
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: -6, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: "auto" }}
+                exit={{ opacity: 0, y: -6, height: 0 }}
+                className="overflow-hidden mb-3"
+              >
+                <div className="p-3 rounded-xl flex items-center gap-2.5 text-sm bg-red-50 dark:bg-red-500/10 border border-red-200/70 dark:border-red-500/20 text-red-700 dark:text-red-300">
+                  <span className="text-base">❌</span>
+                  <span className="flex-1 font-medium">{error}</span>
+                  <button onClick={() => setError("")} className="opacity-60 hover:opacity-100 transition-opacity" aria-label="Dismiss">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <AnimatePresence>
+            {success && (
+              <motion.div
+                initial={{ opacity: 0, y: -6, height: 0 }}
+                animate={{ opacity: 1, y: 0, height: "auto" }}
+                exit={{ opacity: 0, y: -6, height: 0 }}
+                className="overflow-hidden mb-3"
+              >
+                <div className="p-3 rounded-xl flex items-center gap-2.5 text-sm bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200/70 dark:border-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+                  <span className="text-base">✅</span>
+                  <span className="flex-1 font-medium">{success}</span>
+                  <button onClick={() => setSuccess("")} className="opacity-60 hover:opacity-100 transition-opacity" aria-label="Dismiss">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* ───────── Main grid ───────── */}
+        <div className="p-5 sm:p-6 grid grid-cols-1 lg:grid-cols-5 gap-5">
+          {/* Form column (2/5) */}
+          <div className="lg:col-span-2">
+            <div className="rounded-2xl bg-white dark:bg-white/[0.02] border border-violet-100/70 dark:border-white/5 shadow-sm overflow-hidden lg:sticky lg:top-6">
+              {/* Form header */}
+              <div className="relative px-5 py-3.5 border-b border-violet-100/60 dark:border-white/5">
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                    editingTeam
+                      ? "bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-500/20 dark:to-orange-500/15 text-amber-700 dark:text-amber-400 border border-amber-200/70 dark:border-amber-500/20"
+                      : "bg-gradient-to-br from-violet-100 to-indigo-100 dark:from-violet-500/20 dark:to-indigo-500/15 text-violet-700 dark:text-violet-400 border border-violet-200/70 dark:border-violet-500/20"
+                  }`}>
+                    {editingTeam ? (
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
                     ) : (
-                      "Add Team"
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 5v14M5 12h14" />
+                      </svg>
                     )}
                   </div>
-                </button>
-
-                {editingTeam && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditingTeam(null);
-                      setError("");
-                    }}
-                    className="px-6 py-3 border-2 border-gray-300 rounded-xl text-gray-700 font-medium hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 transform hover:scale-105"
-                  >
-                    Cancel
-                  </button>
-                )}
-              </div>
-            </form>
-
-            {/* Quick Stats */}
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-gradient-to-r from-purple-50 to-indigo-50 rounded-lg p-3 text-center">
-                  <p className="text-2xl font-bold text-purple-600">
-                    {teams.length}
-                  </p>
-                  <p className="text-xs text-gray-600">Total Teams</p>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                    {editingTeam ? "Edit team" : "Add new team"}
+                  </h3>
+                  {editingTeam && (
+                    <span className="ml-auto text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-200/70 dark:border-amber-500/20">
+                      Editing
+                    </span>
+                  )}
                 </div>
-                <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-3 text-center">
-                  <p className="text-2xl font-bold text-green-600">
-                    {12 - teams.length}
-                  </p>
-                  <p className="text-xs text-gray-600">Slots Left</p>
+              </div>
+
+              {/* Form body */}
+              <form onSubmit={handleSubmit} className="p-5 space-y-4">
+                <div>
+                  <label className="flex items-center justify-between text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                    <span>Team name <span className="text-red-500">*</span></span>
+                    <span className="text-[10px] font-normal text-gray-400 dark:text-gray-500">max 50</span>
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    defaultValue={editingTeam?.name}
+                    required
+                    maxLength={50}
+                    placeholder="e.g., Marketing Mavericks"
+                    className="w-full px-3.5 py-2.5 rounded-xl text-sm bg-gray-50/70 dark:bg-white/[0.03] border border-violet-100 dark:border-white/10 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:bg-white dark:focus:bg-white/[0.05] focus:border-violet-400 dark:focus:border-violet-500/50 focus:shadow-[0_0_0_4px_rgba(139,92,246,0.1)] transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="flex items-center justify-between text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
+                    <span>Description <span className="font-normal text-gray-400 dark:text-gray-500">(optional)</span></span>
+                    <span className="text-[10px] font-normal text-gray-400 dark:text-gray-500">max 200</span>
+                  </label>
+                  <textarea
+                    name="description"
+                    defaultValue={editingTeam?.description || ""}
+                    rows={4}
+                    maxLength={200}
+                    placeholder="What makes this team stand out?"
+                    className="w-full px-3.5 py-2.5 rounded-xl text-sm bg-gray-50/70 dark:bg-white/[0.03] border border-violet-100 dark:border-white/10 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:bg-white dark:focus:bg-white/[0.05] focus:border-violet-400 dark:focus:border-violet-500/50 focus:shadow-[0_0_0_4px_rgba(139,92,246,0.1)] transition-all resize-none"
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="group relative flex-1 py-2.5 rounded-xl text-white text-sm font-semibold shadow-md shadow-violet-500/20 transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100 overflow-hidden"
+                  >
+                    <span className="absolute inset-0 bg-gradient-to-r from-violet-500 via-violet-600 to-indigo-600" />
+                    <span className="absolute inset-0 bg-gradient-to-r from-violet-600 via-indigo-600 to-violet-600 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                    <span className="absolute inset-x-0 top-0 h-px bg-white/40" />
+                    <span className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-gradient-to-r from-transparent via-white/25 to-transparent" />
+                    <span className="relative flex items-center justify-center gap-2">
+                      {loading ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white/70 border-t-transparent rounded-full animate-spin" />
+                          Saving…
+                        </>
+                      ) : editingTeam ? (
+                        "Save changes"
+                      ) : (
+                        "Add team"
+                      )}
+                    </span>
+                  </button>
+
+                  {editingTeam && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingTeam(null)
+                        setError("")
+                      }}
+                      className="px-4 py-2.5 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-white/[0.03] border border-violet-100 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition-all active:scale-[0.98]"
+                    >
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              </form>
+
+              {/* Stats footer */}
+              <div className="px-5 py-4 border-t border-violet-100/60 dark:border-white/5 bg-gradient-to-b from-transparent to-violet-50/40 dark:to-white/[0.01]">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl bg-white dark:bg-white/[0.03] border border-violet-100/70 dark:border-white/5 p-3">
+                    <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">
+                      <span className="w-1 h-1 rounded-full bg-violet-500" />
+                      Total
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums leading-none">
+                      {teams.length}
+                    </p>
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">active teams</p>
+                  </div>
+                  <div className="rounded-xl bg-white dark:bg-white/[0.03] border border-violet-100/70 dark:border-white/5 p-3">
+                    <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">
+                      <span className="w-1 h-1 rounded-full bg-emerald-500" />
+                      Slots left
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-white tabular-nums leading-none">
+                      {slotsLeft}
+                    </p>
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">of 12 max</p>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Teams List */}
-        <div className="order-1 lg:order-2">
-          <div className="bg-white rounded-2xl shadow-lg p-5 sm:p-6 border border-gray-100">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg p-2">
-                  <svg
-                    className="w-5 h-5 text-white"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                    />
-                  </svg>
+          {/* Teams list (3/5) */}
+          <div className="lg:col-span-3">
+            <div className="rounded-2xl bg-white dark:bg-white/[0.02] border border-violet-100/70 dark:border-white/5 shadow-sm overflow-hidden">
+              {/* List header */}
+              <div className="relative px-5 py-3.5 border-b border-violet-100/60 dark:border-white/5 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-100 to-indigo-100 dark:from-violet-500/20 dark:to-indigo-500/15 text-violet-700 dark:text-violet-400 flex items-center justify-center border border-violet-200/70 dark:border-violet-500/20">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                  </div>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
+                    Teams
+                  </h3>
                 </div>
-                <h3 className="text-lg sm:text-xl font-bold text-gray-800">
-                  Teams List
-                </h3>
+                <span className="text-[11px] font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-white/5 px-2.5 py-1 rounded-md tabular-nums">
+                  {filteredTeams.length} {filteredTeams.length === 1 ? "result" : "results"}
+                </span>
               </div>
-              <span className="bg-gray-100 text-gray-600 text-sm px-3 py-1 rounded-full">
-                {filteredTeams.length}{" "}
-                {filteredTeams.length === 1 ? "team" : "teams"} found
-              </span>
-            </div>
 
-            {filteredTeams.length === 0 ? (
-              <div className="text-center py-12 bg-gray-50 rounded-xl">
-                {searchTerm ? (
-                  <>
-                    <div className="text-5xl mb-4">🔍</div>
-                    <p className="text-gray-600 text-lg mb-2">No teams found</p>
-                    <p className="text-sm text-gray-400">
-                      Try adjusting your search term
+              {/* List body */}
+              <div className="p-3 sm:p-4">
+                {filteredTeams.length === 0 ? (
+                  <div className="text-center py-16 rounded-xl bg-gradient-to-b from-violet-50/50 to-transparent dark:from-white/[0.02] dark:to-transparent border border-dashed border-violet-200/70 dark:border-white/10">
+                    <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-violet-100 to-indigo-100 dark:from-violet-500/15 dark:to-indigo-500/10 mb-4 border border-violet-200/70 dark:border-violet-500/20">
+                      <span className="text-2xl">{searchTerm ? "🔍" : "👥"}</span>
+                    </div>
+                    <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-1">
+                      {searchTerm ? "No matches found" : "No teams yet"}
                     </p>
-                    <button
-                      onClick={() => setSearchTerm("")}
-                      className="mt-4 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all duration-200"
-                    >
-                      Clear search
-                    </button>
-                  </>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 max-w-xs mx-auto">
+                      {searchTerm
+                        ? "Try a different search term"
+                        : "Add your first team using the form on the left"}
+                    </p>
+                    {searchTerm && (
+                      <button
+                        onClick={() => setSearchTerm("")}
+                        className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-500/10 hover:bg-violet-100 dark:hover:bg-violet-500/20 border border-violet-200/70 dark:border-violet-500/20 transition-all"
+                      >
+                        Clear search
+                      </button>
+                    )}
+                  </div>
                 ) : (
-                  <>
-                    <div className="text-5xl mb-4">👥</div>
-                    <p className="text-gray-600 text-lg mb-2">
-                      No teams added yet
-                    </p>
-                    <p className="text-sm text-gray-400">
-                      Create your first team using the form
-                    </p>
-                  </>
+                  <div className="space-y-2 max-h-[560px] overflow-y-auto pr-1 custom-scrollbar">
+                    <AnimatePresence mode="popLayout">
+                      {filteredTeams.map((team, index) => {
+                        const isTop3 = index < 3
+                        const rank = isTop3 ? rankStyles[index] : null
+
+                        return (
+                          <motion.div
+                            key={team.id}
+                            layout
+                            initial={{ opacity: 0, y: 12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -6 }}
+                            transition={{
+                              duration: 0.35,
+                              ease: [0.22, 1, 0.36, 1],
+                              delay: index * 0.025,
+                            }}
+                            whileHover={{ y: -2 }}
+                            className="group relative rounded-xl bg-white dark:bg-white/[0.02] border border-violet-100/70 dark:border-white/5 hover:border-violet-300 dark:hover:border-violet-500/30 hover:shadow-[0_8px_24px_-8px_rgba(139,92,246,0.25)] dark:hover:shadow-[0_8px_24px_-8px_rgba(139,92,246,0.15)] transition-all"
+                          >
+                            <div className="flex items-start gap-3.5 p-3.5">
+                              {/* Rank badge */}
+                              <div className="relative shrink-0">
+                                <div
+                                  className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold tabular-nums border ${
+                                    rank
+                                      ? `${rank.bg} ${rank.text} ${rank.border}`
+                                      : "bg-gray-50 dark:bg-white/5 text-gray-500 dark:text-gray-400 border-violet-100 dark:border-white/5"
+                                  }`}
+                                >
+                                  {isTop3 ? (
+                                    <span className="text-base">{rank!.emoji}</span>
+                                  ) : (
+                                    index + 1
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Content */}
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                                  <h4 className="text-[13.5px] font-semibold text-gray-900 dark:text-white truncate">
+                                    {team.name}
+                                  </h4>
+                                  {isTop3 && (
+                                    <span className={`shrink-0 inline-flex items-center gap-1 text-[9.5px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md ${rank!.bg} ${rank!.text} border ${rank!.border}`}>
+                                      <span className={`w-1 h-1 rounded-full ${rank!.dot}`} />
+                                      Top {index + 1}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {team.description ? (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed">
+                                    {team.description}
+                                  </p>
+                                ) : (
+                                  <p className="text-xs text-gray-400 dark:text-gray-500 italic">
+                                    No description provided
+                                  </p>
+                                )}
+
+                                {/* Stats row */}
+                                <div className="flex items-center gap-3.5 mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                                  {team.voteCount !== undefined && (
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <svg className="w-3.5 h-3.5 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M9 12l2 2 4-4" />
+                                        <circle cx="12" cy="12" r="10" />
+                                      </svg>
+                                      <span className="tabular-nums font-semibold text-gray-700 dark:text-gray-300">{team.voteCount}</span>
+                                      <span>{team.voteCount === 1 ? "vote" : "votes"}</span>
+                                    </span>
+                                  )}
+                                  {team.panelistScoreCount !== undefined && (
+                                    <span className="inline-flex items-center gap-1.5">
+                                      <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                      </svg>
+                                      <span className="tabular-nums font-semibold text-gray-700 dark:text-gray-300">{team.panelistScoreCount}</span>
+                                      <span>{team.panelistScoreCount === 1 ? "score" : "scores"}</span>
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Actions */}
+                              <div
+                                className="flex items-center gap-0.5 shrink-0 opacity-60 group-hover:opacity-100 transition-opacity"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    e.preventDefault()
+                                    setEditingTeam(team)
+                                    setError("")
+                                    window.scrollTo({ top: 0, behavior: "smooth" })
+                                  }}
+                                  className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition-all active:scale-95"
+                                  title="Edit team"
+                                  type="button"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                                  </svg>
+                                </button>
+
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    e.preventDefault()
+                                    handleDelete(team.id)
+                                  }}
+                                  className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-all active:scale-95"
+                                  title="Delete team"
+                                  type="button"
+                                >
+                                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )
+                      })}
+                    </AnimatePresence>
+                  </div>
                 )}
               </div>
-            ) : (
-              <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
-                {filteredTeams.map((team, index) => (
-                  <div
-                    key={team.id}
-                    className={`group relative bg-gradient-to-r from-gray-50 to-white rounded-xl p-4 border-2 transition-all duration-300 transform hover:-translate-y-1 hover:shadow-xl ${
-                      hoveredTeam === team.id
-                        ? "border-purple-300 shadow-lg"
-                        : "border-gray-100"
-                    }`}
-                    onMouseEnter={() => setHoveredTeam(team.id)}
-                    onMouseLeave={() => setHoveredTeam(null)}
-                  >
-                    {/* Rank Indicator */}
-                    <div className="absolute -left-2 top-1/2 transform -translate-y-1/2">
-                      <div
-                        className={`w-1.5 h-12 rounded-full ${
-                          index < 3
-                            ? "bg-gradient-to-b from-yellow-400 to-yellow-500"
-                            : "bg-gray-300"
-                        }`}
-                      ></div>
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pl-2">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <h4 className="font-bold text-gray-800 truncate">
-                            {team.name}
-                          </h4>
-                          {index < 3 && (
-                            <span
-                              className="text-yellow-500 text-lg animate-pulse"
-                              title="Top 3 team"
-                            >
-                              ⭐
-                            </span>
-                          )}
-                        </div>
-                        {team.description ? (
-                          <p className="text-sm text-gray-600 line-clamp-2">
-                            {team.description}
-                          </p>
-                        ) : (
-                          <p className="text-sm text-gray-400 italic">
-                            No description
-                          </p>
-                        )}
-
-                        {/* Team Stats Tags */}
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          <span
-                            className="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full"
-                            title="Team ID"
-                          >
-                            ID: {team.id.substring(0, 8)}...
-                          </span>
-                          {team.voteCount !== undefined && (
-                            <span
-                              className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full"
-                              title="Audience votes"
-                            >
-                              🗳️ {team.voteCount}{" "}
-                              {team.voteCount === 1 ? "vote" : "votes"}
-                            </span>
-                          )}
-                          {team.panelistScoreCount !== undefined && (
-                            <span
-                              className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full"
-                              title="Panelist scores"
-                            >
-                              📊 {team.panelistScoreCount}{" "}
-                              {team.panelistScoreCount === 1
-                                ? "score"
-                                : "scores"}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Action Buttons - FIXED: Added stopPropagation and higher z-index */}
-                      <div
-                        className="flex items-center gap-2"
-                        onClick={(e) => e.stopPropagation()}
-                        style={{ position: "relative", zIndex: 20 }}
-                      >
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            setEditingTeam(team);
-                            setError("");
-                            // Scroll to form smoothly
-                            window.scrollTo({ top: 0, behavior: "smooth" });
-                          }}
-                          className="relative group/edit cursor-pointer"
-                          title="Edit team"
-                          type="button"
-                        >
-                          <div className="absolute inset-0 bg-blue-500 rounded-lg blur-md group-hover/edit:blur-lg opacity-0 group-hover/edit:opacity-50 transition-all duration-300"></div>
-                          <div className="relative p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-all duration-200 transform group-hover/edit:scale-110">
-                            <svg
-                              className="w-5 h-5"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                              />
-                            </svg>
-                          </div>
-                        </button>
-
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            e.preventDefault();
-                            handleDelete(team.id);
-                          }}
-                          className="relative group/delete cursor-pointer"
-                          title="Delete team"
-                          type="button"
-                        >
-                          <div className="absolute inset-0 bg-red-500 rounded-lg blur-md group-hover/delete:blur-lg opacity-0 group-hover/delete:opacity-50 transition-all duration-300"></div>
-                          <div className="relative p-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition-all duration-200 transform group-hover/delete:scale-110">
-                            <svg
-                              className="w-5 h-5"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              stroke="currentColor"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                              />
-                            </svg>
-                          </div>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Hover Effect Border */}
-                    <div
-                      className={`absolute inset-0 rounded-xl border-2 transition-all duration-300 pointer-events-none ${
-                        hoveredTeam === team.id
-                          ? "border-purple-300 opacity-100"
-                          : "border-transparent opacity-0"
-                      }`}
-                    ></div>
-                  </div>
-                ))}
-              </div>
-            )}
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Add global styles for custom scrollbar */}
       <style jsx>{`
         .custom-scrollbar::-webkit-scrollbar {
-          width: 6px;
+          width: 5px;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
-          background: #f1f1f1;
-          border-radius: 10px;
+          background: transparent;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: linear-gradient(to bottom, #8c5bff, #6356d7);
+          background: #ddd6fe;
           border-radius: 10px;
         }
         .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(to bottom, #7b4aee, #5245c6);
+          background: #c4b5fd;
         }
-        @keyframes shake {
-          0%,
-          100% {
-            transform: translateX(0);
-          }
-          10%,
-          30%,
-          50%,
-          70%,
-          90% {
-            transform: translateX(-2px);
-          }
-          20%,
-          40%,
-          60%,
-          80% {
-            transform: translateX(2px);
-          }
+        :global(.dark) .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #3f3f46;
         }
-        .animate-shake {
-          animation: shake 0.5s ease-in-out;
-        }
-        @keyframes slideDown {
-          from {
-            opacity: 0;
-            transform: translateY(-10px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .animate-slide-down {
-          animation: slideDown 0.3s ease-out;
+        :global(.dark) .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: #52525b;
         }
         .line-clamp-2 {
           display: -webkit-box;
@@ -806,5 +745,5 @@ export default function TeamManagement() {
         }
       `}</style>
     </div>
-  );
+  )
 }
