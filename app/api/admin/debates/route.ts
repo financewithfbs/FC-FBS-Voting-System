@@ -3,11 +3,15 @@ import { prisma } from "@/lib/prisma"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 
+// This route depends on the session cookie (via headers()),
+// so it must run on every request — never cached or pre-rendered.
+export const dynamic = "force-dynamic"
+
 // GET all debates (admin)
 export async function GET() {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session || session.user?.role !== "ADMIN") {
       return NextResponse.json(
         { error: "Unauthorized - Admin access required" },
@@ -16,22 +20,19 @@ export async function GET() {
     }
 
     console.log("Fetching debates...")
-    
+
     const debates = await prisma.debate.findMany({
       include: {
         teams: {
           include: {
-            team: true
-          }
+            team: true,
+          },
         },
         votes: true,
         panelistScores: true,
-        votingControl: true
+        votingControl: true,
       },
-      orderBy: [
-        { round: 'asc' },
-        { debateNumber: 'asc' }
-      ]
+      orderBy: [{ round: "asc" }, { debateNumber: "asc" }],
     })
 
     console.log(`Found ${debates.length} debates`)
@@ -39,7 +40,11 @@ export async function GET() {
   } catch (error) {
     console.error("Error fetching debates:", error)
     return NextResponse.json(
-      { error: "Error fetching debates: " + (error instanceof Error ? error.message : "Unknown error") },
+      {
+        error:
+          "Error fetching debates: " +
+          (error instanceof Error ? error.message : "Unknown error"),
+      },
       { status: 500 }
     )
   }
@@ -49,7 +54,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session || session.user?.role !== "ADMIN") {
       return NextResponse.json(
         { error: "Unauthorized - Admin access required" },
@@ -72,8 +77,8 @@ export async function POST(req: Request) {
     const existingDebate = await prisma.debate.findFirst({
       where: {
         round,
-        debateNumber
-      }
+        debateNumber,
+      },
     })
 
     if (existingDebate) {
@@ -94,17 +99,21 @@ export async function POST(req: Request) {
       include: {
         teams: {
           include: {
-            team: true
-          }
-        }
-      }
+            team: true,
+          },
+        },
+      },
     })
 
     return NextResponse.json(debate)
   } catch (error) {
     console.error("Error creating debate:", error)
     return NextResponse.json(
-      { error: "Error creating debate: " + (error instanceof Error ? error.message : "Unknown error") },
+      {
+        error:
+          "Error creating debate: " +
+          (error instanceof Error ? error.message : "Unknown error"),
+      },
       { status: 500 }
     )
   }
@@ -114,7 +123,7 @@ export async function POST(req: Request) {
 export async function PUT(req: Request) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session || session.user?.role !== "ADMIN") {
       return NextResponse.json(
         { error: "Unauthorized - Admin access required" },
@@ -149,15 +158,15 @@ export async function PUT(req: Request) {
 
       // First delete existing teams
       await prisma.debateTeam.deleteMany({
-        where: { debateId: id }
+        where: { debateId: id },
       })
 
       // Then create new team assignments
       await prisma.debateTeam.createMany({
         data: teamIds.map((teamId: string) => ({
           debateId: id,
-          teamId
-        }))
+          teamId,
+        })),
       })
     }
 
@@ -168,17 +177,21 @@ export async function PUT(req: Request) {
       include: {
         teams: {
           include: {
-            team: true
-          }
-        }
-      }
+            team: true,
+          },
+        },
+      },
     })
 
     return NextResponse.json(debate)
   } catch (error) {
     console.error("Error updating debate:", error)
     return NextResponse.json(
-      { error: "Error updating debate: " + (error instanceof Error ? error.message : "Unknown error") },
+      {
+        error:
+          "Error updating debate: " +
+          (error instanceof Error ? error.message : "Unknown error"),
+      },
       { status: 500 }
     )
   }

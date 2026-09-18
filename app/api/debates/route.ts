@@ -3,10 +3,14 @@ import { prisma } from "@/lib/prisma"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 
+// This route depends on the session cookie and query params,
+// so it must run on every request — never cached or pre-rendered.
+export const dynamic = "force-dynamic"
+
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session) {
       return NextResponse.json(
         { error: "Unauthorized" },
@@ -17,35 +21,42 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url)
     const round = parseInt(searchParams.get("round") || "1")
 
+    if (isNaN(round)) {
+      return NextResponse.json(
+        { error: "Invalid round parameter" },
+        { status: 400 }
+      )
+    }
+
     const debates = await prisma.debate.findMany({
       where: { round },
       include: {
         teams: {
           include: {
-            team: true
-          }
+            team: true,
+          },
         },
-        votingControl: true
+        votingControl: true,
       },
-      orderBy: { debateNumber: 'asc' }
+      orderBy: { debateNumber: "asc" },
     })
 
     // Format for audience view (don't send sensitive data)
-    const formattedDebates = debates.map(debate => ({
+    const formattedDebates = debates.map((debate) => ({
       id: debate.id,
       round: debate.round,
       debateNumber: debate.debateNumber,
       name: debate.name,
       status: debate.status,
-      teams: debate.teams.map(dt => ({
+      teams: debate.teams.map((dt) => ({
         team: {
           id: dt.team.id,
-          name: dt.team.name
-        }
+          name: dt.team.name,
+        },
       })),
-      votingControl: debate.votingControl ? {
-        isActive: debate.votingControl.isActive
-      } : null
+      votingControl: debate.votingControl
+        ? { isActive: debate.votingControl.isActive }
+        : null,
     }))
 
     return NextResponse.json(formattedDebates)
