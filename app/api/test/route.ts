@@ -3,27 +3,31 @@ import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
 
+// This route depends on the session cookie (via headers()),
+// so it must run on every request — never cached or pre-rendered.
+export const dynamic = "force-dynamic"
+
 export async function GET() {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session) {
       return NextResponse.json({ error: "Not logged in" }, { status: 401 })
     }
 
     // Check if user exists in database
     const user = await prisma.user.findUnique({
-      where: { email: session.user.email }
+      where: { email: session.user.email },
     })
 
     return NextResponse.json({
       session: {
         id: session.user.id,
         email: session.user.email,
-        role: session.user.role
+        role: session.user.role,
       },
       databaseUser: user,
-      exists: !!user
+      exists: !!user,
     })
   } catch (error) {
     console.error("Error:", error)

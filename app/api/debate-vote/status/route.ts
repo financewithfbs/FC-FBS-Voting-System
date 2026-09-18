@@ -3,10 +3,14 @@ import { prisma } from "@/lib/prisma"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 
+// This route depends on the session cookie (via headers()),
+// so it must run on every request — never cached or pre-rendered.
+export const dynamic = "force-dynamic"
+
 export async function GET(req: Request) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session) {
       return NextResponse.json(
         { error: "Unauthorized" },
@@ -28,16 +32,15 @@ export async function GET(req: Request) {
       where: {
         debateId_userId: {
           debateId,
-          userId: session.user.id
-        }
-      }
+          userId: session.user.id,
+        },
+      },
     })
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       hasVoted: !!vote,
-      debateId
+      debateId,
     })
-
   } catch (error) {
     console.error("Error checking vote status:", error)
     return NextResponse.json(
